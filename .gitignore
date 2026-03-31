@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables — NEVER commit these
+.env
+**/.env
+.env.local
+.env.production
+.env.development
+
+# Build outputs
+/frontend/dist/
+/backend/dist/
+build/
+
+# Logs
+logs/
+*.log
+**/logs/*.log
+npm-debug.log*
+
+# User generated content
+backend/public/uploads/**
+!backend/public/uploads/.gitkeep
+
+# Prisma SQLite db
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+

@@ -1,0 +1,241 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #F7F3EC;
+  --bg-mid: #EDEAE2;
+  --bg-card: rgba(255, 255, 255, 0.7);
+  --bg-card-h: rgba(255, 255, 255, 0.95);
+  --fg: #0C0C0C;
+  --fg-dim: rgba(12, 12, 12, 0.48);
+  --fg-dimmer: rgba(12, 12, 12, 0.18);
+  --border: rgba(12, 12, 12, 0.12);
+  --border-dim: rgba(12, 12, 12, 0.07);
+  --nav-bg: rgba(247, 243, 236, 0.7);
+  --shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+  --teal: #007A64;
+  --teal-light: rgba(0, 122, 100, 0.1);
+  --teal-muted: rgba(0, 122, 100, 0.08);
+  --transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(12, 12, 12, 0.25);
+}
+
+/* ─── Glass Card ─── */
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+}
+
+.glass-card:hover {
+  background: var(--bg-card-h);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Fonts ─── */
+.font-unbounded {
+  font-family: 'Unbounded', sans-serif;
+}
+
+.font-mono-custom {
+  font-family: 'Space Mono', monospace;
+}
+
+/* ─── Blink animation ─── */
+@keyframes blink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.2;
+  }
+}
+
+.blink {
+  animation: blink 1.8s ease-in-out infinite;
+}
+
+/* ─── Slide In ─── */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-in {
+  animation: slideInUp 0.5s ease both;
+}
+
+/* ─── Select styling ─── */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* ─── Custom number counter pulse ─── */
+@keyframes countPulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.02);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.metric-num {
+  animation: countPulse 3s ease-in-out infinite;
+}
+
+/* ─── Grain overlay ─── */
+.grain {
+  position: fixed;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.3;
+}
+
+/* ─── Main content above grain ─── */
+.main-content {
+  position: relative;
+  z-index: 10;
+}
+
+/* ─── Badge ─── */
+.badge-approved {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--teal);
+  background: rgba(0, 122, 100, 0.1);
+  border: 1px solid rgba(0, 122, 100, 0.25);
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+.badge-pending {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(12, 12, 12, 0.48);
+  background: rgba(12, 12, 12, 0.05);
+  border: 1px solid rgba(12, 12, 12, 0.1);
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+.badge-review {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b07d00;
+  background: rgba(255, 184, 0, 0.08);
+  border: 1px solid rgba(255, 184, 0, 0.25);
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+/* ─── Textarea ─── */
+textarea:focus,
+select:focus,
+input:focus {
+  outline: none;
+  border-color: var(--teal) !important;
+  box-shadow: 0 0 0 3px rgba(0, 122, 100, 0.1);
+}
+
+/* ─── Scrollable scheduler table ─── */
+.scheduler-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.scheduler-table th {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.scheduler-table td {
+  font-size: 0.82rem;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--fg);
+}
+
+.scheduler-table tr:last-child td {
+  border-bottom: none;
+}
+
+.scheduler-table tr:hover td {
+  background: rgba(0, 122, 100, 0.02);
+}
