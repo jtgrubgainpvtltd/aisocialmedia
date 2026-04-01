@@ -1,7 +1,7 @@
-import { body, validationResult } from 'express-validator';
-import * as openaiService from '../services/openaiService.js';
-import logger from '../utils/logger.js';
-import prisma from '../../prisma/client.js';
+import { body, validationResult } from "express-validator";
+import * as openaiService from "../services/openaiService.js";
+import logger from "../utils/logger.js";
+import prisma from "../../prisma/client.js";
 
 // ---------------------------------------------------------
 //  POST /api/v1/content/generate   (authenticated)
@@ -15,20 +15,42 @@ export const generateContent = async (req, res, next) => {
 
     const userId = req.user.id;
     const {
-      restaurantName, restaurantType, city, tone, dishName, occasion,
-      hashtags, platform, language, imageStyle, imageSize, imageQuality,
+      restaurantName,
+      restaurantType,
+      city,
+      tone,
+      dishName,
+      occasion,
+      hashtags,
+      platform,
+      language,
+      imageStyle,
+      imageSize,
+      imageQuality,
       generateImage: shouldGenerateImage = true,
-      includeCTA = false, addEmojis = false, autoHashtags = false,
-      prompt: customPrompt, campaignType, dishDescription
+      includeCTA = false,
+      addEmojis = false,
+      autoHashtags = false,
+      prompt: customPrompt,
+      campaignType,
+      dishDescription,
     } = req.body;
 
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
-      include: { restaurant: true }
+      include: { restaurant: true },
     });
 
     if (!userRecord || !userRecord.restaurant) {
-      return res.status(404).json({ success: false, error: { message: 'Restaurant profile not found. Please complete your profile first.' } });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          error: {
+            message:
+              "Restaurant profile not found. Please complete your profile first.",
+          },
+        });
     }
 
     const restaurant = userRecord.restaurant;
@@ -42,10 +64,20 @@ export const generateContent = async (req, res, next) => {
         area: restaurant.area,
         tone: restaurant.brand_tone || tone,
         signatureDishes: restaurant.signature_dishes,
-        occasion, dishName, dishDescription,
-        hashtags, imageStyle, imageSize, imageQuality, campaignType,
+        restaurantLogoUrl: restaurant.logo_url, // Pass logo URL for compositing
+        language: language || "BILINGUAL",
+        occasion,
+        dishName,
+        dishDescription,
+        hashtags,
+        imageStyle,
+        imageSize,
+        imageQuality,
+        campaignType,
         prompt: customPrompt || occasion,
-        dallEStyle: 'vivid'
+        includeCTA,
+        addEmojis,
+        autoHashtags,
       });
       caption = result.caption;
       imageUrl = result.imageUrl;
@@ -55,49 +87,74 @@ export const generateContent = async (req, res, next) => {
         restaurantName: restaurant.name || restaurantName,
         restaurantType: restaurant.cuisine_type || restaurantType,
         city: restaurant.city || city,
-        tone: restaurant.brand_tone || tone || 'casual',
-        occasion, dishName, hashtags
+        tone: restaurant.brand_tone || tone || "casual",
+        language: language || "BILINGUAL",
+        occasion,
+        dishName,
+        hashtags,
+        addEmojis,
+        includeCTA,
       });
       caption = result.caption;
       metadata = { caption: result.metadata };
     }
 
+    // Parse bilingual captions
+    let captionEnglish = caption;
+    let captionHindi = null;
+
+    if (language === "BILINGUAL" && caption) {
+      const parts = caption.split(/\n{2,}/); // Split on blank lines
+      if (parts.length >= 2) {
+        captionEnglish = parts[0].trim();
+        captionHindi = parts[1].trim();
+      }
+    } else if (language === "HINDI") {
+      captionEnglish = null;
+      captionHindi = caption;
+    }
+
     const savedContent = await prisma.generatedContent.create({
       data: {
         restaurant_id: restaurant.id,
-        platform: (platform || 'INSTAGRAM').toUpperCase(),
-        language: language || 'BILINGUAL',
-        tone: tone || 'casual',
-        prompt: customPrompt || JSON.stringify({ dishName, occasion, tone }),
-        caption_english: caption,
-        caption_hindi: null,
-        hashtags: Array.isArray(hashtags) ? hashtags.join(', ') : (hashtags || null),
+        platform: (platform || "INSTAGRAM").toUpperCase(),
+        language: language || "BILINGUAL",
+        tone: tone || "casual",
+        prompt:
+          customPrompt ||
+          JSON.stringify({ dishName, occasion, tone, campaignType }),
+        caption_english: captionEnglish,
+        caption_hindi: captionHindi,
+        hashtags: Array.isArray(hashtags)
+          ? hashtags.join(", ")
+          : hashtags || null,
         include_cta: includeCTA,
         add_emojis: addEmojis,
         auto_hashtags: autoHashtags,
         image_url: imageUrl || null,
-        status: 'DRAFT',
-        iud_flag: 'I',
+        status: "DRAFT",
+        iud_flag: "I",
         created_by: userId.toString(),
-        updated_by: userId.toString()
-      }
+        updated_by: userId.toString(),
+      },
     });
 
-    logger.info('Content generated and saved', { contentId: savedContent.id });
+    logger.info("Content generated and saved", { contentId: savedContent.id });
 
     res.json({
       success: true,
-      message: 'Content generated and saved successfully',
+      message: "Content generated and saved successfully",
       data: {
         contentId: savedContent.id,
         caption,
         imageUrl,
-        metadata
-      }
+        metadata,
+      },
     });
-
   } catch (error) {
-    logger.error('Error in generateContent controller', { error: error.message });
+    logger.error("Error in generateContent controller", {
+      error: error.message,
+    });
     next(error);
   }
 };
@@ -112,18 +169,23 @@ export const getContentHistory = async (req, res, next) => {
 
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
-      include: { restaurant: true }
+      include: { restaurant: true },
     });
 
     if (!userRecord || !userRecord.restaurant) {
-      return res.status(404).json({ success: false, error: { message: 'Restaurant not found' } });
+      return res
+        .status(404)
+        .json({ success: false, error: { message: "Restaurant not found" } });
     }
 
     const content = await prisma.generatedContent.findMany({
-      where: { restaurant_id: userRecord.restaurant.id, iud_flag: { not: 'D' } },
-      orderBy: { created_on: 'desc' },
+      where: {
+        restaurant_id: userRecord.restaurant.id,
+        iud_flag: { not: "D" },
+      },
+      orderBy: { created_on: "desc" },
       take: parseInt(limit),
-      skip: parseInt(offset)
+      skip: parseInt(offset),
     });
 
     res.json({ success: true, data: { content } });
@@ -140,21 +202,29 @@ export const getContentStats = async (req, res, next) => {
     const userId = req.user.id;
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
-      include: { restaurant: true }
+      include: { restaurant: true },
     });
 
     if (!userRecord || !userRecord.restaurant) {
-      return res.status(404).json({ success: false, error: { message: 'Restaurant not found' } });
+      return res
+        .status(404)
+        .json({ success: false, error: { message: "Restaurant not found" } });
     }
 
     const generated = await prisma.generatedContent.count({
-      where: { restaurant_id: userRecord.restaurant.id, iud_flag: { not: 'D' } }
+      where: {
+        restaurant_id: userRecord.restaurant.id,
+        iud_flag: { not: "D" },
+      },
     });
     const scheduled = await prisma.scheduledPost.count({
-      where: { restaurant_id: userRecord.restaurant.id, iud_flag: { not: 'D' } }
+      where: {
+        restaurant_id: userRecord.restaurant.id,
+        iud_flag: { not: "D" },
+      },
     });
     const published = await prisma.publishedPost.count({
-      where: { restaurant_id: userRecord.restaurant.id }
+      where: { restaurant_id: userRecord.restaurant.id },
     });
 
     res.json({ success: true, data: { generated, scheduled, published } });
@@ -170,12 +240,16 @@ export const getContentById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const content = await prisma.generatedContent.findFirst({
-      where: { id: parseInt(id), iud_flag: { not: 'D' } },
-      include: { restaurant: { select: { name: true, city: true, cuisine_type: true } } }
+      where: { id: parseInt(id), iud_flag: { not: "D" } },
+      include: {
+        restaurant: { select: { name: true, city: true, cuisine_type: true } },
+      },
     });
 
     if (!content) {
-      return res.status(404).json({ success: false, error: { message: 'Content not found' } });
+      return res
+        .status(404)
+        .json({ success: false, error: { message: "Content not found" } });
     }
 
     res.json({ success: true, data: content });
@@ -192,13 +266,42 @@ export const deleteContent = async (req, res, next) => {
     const userId = req.user.id;
     const { id } = req.params;
 
-    await prisma.generatedContent.update({
-      where: { id: parseInt(id) },
-      data: { iud_flag: 'D', updated_by: userId.toString() }
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { restaurant: true },
     });
 
-    logger.info('Content soft-deleted', { contentId: id });
-    res.json({ success: true, message: 'Content deleted successfully' });
+    if (!userRecord?.restaurant) {
+      return res
+        .status(404)
+        .json({ success: false, error: { message: "Restaurant not found" } });
+    }
+
+    // Ownership check — only delete if this content belongs to THIS restaurant
+    const existing = await prisma.generatedContent.findFirst({
+      where: {
+        id: parseInt(id),
+        restaurant_id: userRecord.restaurant.id,
+        iud_flag: { not: "D" },
+      },
+    });
+
+    if (!existing) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+          error: { message: "Content not found or not yours" },
+        });
+    }
+
+    await prisma.generatedContent.update({
+      where: { id: parseInt(id) },
+      data: { iud_flag: "D", updated_by: userId.toString() },
+    });
+
+    logger.info("Content soft-deleted", { contentId: id, userId });
+    res.json({ success: true, message: "Content deleted successfully" });
   } catch (error) {
     next(error);
   }
@@ -209,34 +312,74 @@ export const deleteContent = async (req, res, next) => {
 // ---------------------------------------------------------
 export const testCaption = async (req, res, next) => {
   try {
-    const { restaurantName, restaurantType, city, tone, occasion, dishName, hashtags } = req.body;
+    const {
+      restaurantName,
+      restaurantType,
+      city,
+      tone,
+      occasion,
+      dishName,
+      hashtags,
+    } = req.body;
     const result = await openaiService.generateCaption({
-      restaurantName: restaurantName || '',
-      restaurantType: restaurantType || '',
-      city: city || '',
-      tone: tone || 'casual',
-      occasion, dishName, hashtags
+      restaurantName: restaurantName || "",
+      restaurantType: restaurantType || "",
+      city: city || "",
+      tone: tone || "casual",
+      occasion,
+      dishName,
+      hashtags,
     });
-    res.json({ success: true, data: { caption: result.caption, metadata: result.metadata } });
+    res.json({
+      success: true,
+      data: { caption: result.caption, metadata: result.metadata },
+    });
   } catch (error) {
-    logger.error('Error in testCaption', { error: error.message });
+    logger.error("Error in testCaption", { error: error.message });
     next(error);
   }
 };
 
 export const testImage = async (req, res, next) => {
   try {
-    const { prompt, dishName, cuisineType, description, style, size, quality, dallEStyle } = req.body;
+    const {
+      prompt,
+      dishName,
+      cuisineType,
+      description,
+      style,
+      size,
+      quality,
+      dallEStyle,
+    } = req.body;
     let imagePrompt = prompt;
     if (!prompt && dishName) {
-      imagePrompt = await openaiService.generateFoodPrompt({ dishName, cuisineType: cuisineType || '', description, style: style || 'appetizing' });
+      imagePrompt = await openaiService.generateFoodPrompt({
+        dishName,
+        cuisineType: cuisineType || "",
+        description,
+        style: style || "appetizing",
+      });
     } else if (!prompt) {
-      imagePrompt = 'Professional food photography, appetizing, vibrant colors, restaurant quality';
+      imagePrompt =
+        "Professional food photography, appetizing, vibrant colors, restaurant quality";
     }
-    const result = await openaiService.generateImage({ prompt: imagePrompt, size: size || '1024x1024', quality: quality || 'standard', style: dallEStyle || 'vivid' });
-    res.json({ success: true, data: { imageUrl: result.imageUrl, revisedPrompt: result.revisedPrompt, metadata: result.metadata } });
+    const result = await openaiService.generateImage({
+      prompt: imagePrompt,
+      size: size || "1024x1024",
+      quality: quality || "high",
+      // NOTE: "style" is a DALL-E 3 parameter. gpt-image-1 does not support it.
+    });
+    res.json({
+      success: true,
+      data: {
+        imageUrl: result.imageUrl,
+        revisedPrompt: result.revisedPrompt,
+        metadata: result.metadata,
+      },
+    });
   } catch (error) {
-    logger.error('Error in testImage', { error: error.message });
+    logger.error("Error in testImage", { error: error.message });
     next(error);
   }
 };
@@ -244,31 +387,38 @@ export const testImage = async (req, res, next) => {
 export const testFullContent = async (req, res, next) => {
   try {
     const result = await openaiService.generateFullContent({
-      restaurantName: req.body.restaurantName || '',
-      restaurantType: req.body.restaurantType || '',
-      city: req.body.city || '',
-      tone: req.body.tone || 'casual',
+      restaurantName: req.body.restaurantName || "",
+      restaurantType: req.body.restaurantType || "",
+      city: req.body.city || "",
+      tone: req.body.tone || "casual",
       occasion: req.body.occasion,
-      dishName: req.body.dishName || '',
+      dishName: req.body.dishName || "",
       dishDescription: req.body.dishDescription,
       hashtags: req.body.hashtags || [],
-      imageStyle: req.body.imageStyle || 'appetizing',
-      imageSize: req.body.imageSize || '1024x1024',
-      imageQuality: req.body.imageQuality || 'standard',
-      dallEStyle: req.body.dallEStyle || 'vivid'
+      imageStyle: req.body.imageStyle || "appetizing",
+      imageSize: req.body.imageSize || "1024x1024",
+      imageQuality: req.body.imageQuality || "standard",
+      dallEStyle: req.body.dallEStyle || "vivid",
     });
-    res.json({ success: true, data: { caption: result.caption, imageUrl: result.imageUrl, metadata: result.metadata } });
+    res.json({
+      success: true,
+      data: {
+        caption: result.caption,
+        imageUrl: result.imageUrl,
+        metadata: result.metadata,
+      },
+    });
   } catch (error) {
-    logger.error('Error in testFullContent', { error: error.message });
+    logger.error("Error in testFullContent", { error: error.message });
     next(error);
   }
 };
 
 export const generateContentValidation = [
-  body('restaurantName').optional().isString(),
-  body('tone').optional().isIn(['casual', 'professional', 'fun', 'elegant']),
-  body('imageSize').optional().isIn(['1024x1024', '1024x1792', '1792x1024']),
-  body('imageQuality').optional().isIn(['standard', 'hd'])
+  body("restaurantName").optional().isString(),
+  body("tone").optional().isIn(["casual", "professional", "fun", "elegant"]),
+  body("imageSize").optional().isIn(["1024x1024", "1024x1792", "1792x1024"]),
+  body("imageQuality").optional().isIn(["low", "medium", "high", "auto"]),
 ];
 
 export default {
@@ -280,5 +430,5 @@ export default {
   deleteContent,
   testCaption,
   testImage,
-  testFullContent
+  testFullContent,
 };

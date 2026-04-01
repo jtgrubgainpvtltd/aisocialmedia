@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { posts } from '../api/client'
+import { useToast, ToastContainer } from './Toast'
 
 const PlatformIcon = ({ platform }) => {
   const p = platform?.toLowerCase() || ''
@@ -45,6 +46,7 @@ export default function SchedulerView() {
   const [filter, setFilter] = useState('All')
   const [scheduledPosts, setScheduledPosts] = useState([])
   const [loading, setLoading] = useState(true)
+  const { toasts, toast } = useToast()
   
   const filters = ['All', 'PENDING', 'APPROVED', 'PUBLISHED']
 
@@ -77,11 +79,12 @@ export default function SchedulerView() {
         setScheduledPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'CANCELLED' } : p))
       }
     } catch (err) {
-      alert('Failed to cancel post')
+      toast.error('Failed to cancel post')
     }
   }
 
   return (
+    <>
     <div className="glass-card overflow-hidden">
       {/* Header with filter tabs */}
       <div
@@ -267,5 +270,7 @@ export default function SchedulerView() {
         </Link>
       </div>
     </div>
+    <ToastContainer toasts={toasts} />
+    </>
   )
 }

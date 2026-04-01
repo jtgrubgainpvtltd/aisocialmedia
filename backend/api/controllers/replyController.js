@@ -1,4 +1,4 @@
-import prisma from '../config/prisma.js';
+import prisma from '../../prisma/client.js';
 import logger from '../utils/logger.js';
 import metaService from '../services/metaService.js';
 import openaiService from '../services/openaiService.js';

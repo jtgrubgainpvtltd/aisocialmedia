@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { replies as repliesApi } from '../../api/client';
+import { useToast, ToastContainer } from '../../components/Toast';
 
 const TEAL = '#007A64';
 const NAVY = '#1a2332';
 
-function ReplyCard({ reply }) {
+function ReplyCard({ reply, toast }) {
   const queryClient = useQueryClient();
   const [editedText, setEditedText] = useState(reply.ai_draft_reply);
   const [isEditing, setIsEditing] = useState(false);
@@ -14,10 +15,10 @@ function ReplyCard({ reply }) {
     mutationFn: () => repliesApi.approve(reply.id, { editedReplyText: editedText }),
     onSuccess: () => {
       queryClient.invalidateQueries(['replies']);
-      alert('Reply approved and posted successfully!');
+      toast.success('Reply approved and posted successfully!');
     },
     onError: (err) => {
-      alert(`Failed to approve: ${err.response?.data?.error || err.message}`);
+      toast.error(`Failed to approve: ${err.response?.data?.error || err.message}`);
     }
   });
 
@@ -26,8 +27,8 @@ function ReplyCard({ reply }) {
     onSuccess: () => {
         queryClient.invalidateQueries(['replies']);
     },
-    onError: (err) => {
-        alert('Failed to reject reply');
+    onError: () => {
+        toast.error('Failed to reject reply');
     }
   });
 
@@ -121,12 +122,14 @@ function ReplyCard({ reply }) {
 }
 
 export default function ReplyQueuePage() {
+  const { toasts, toast } = useToast();
   const { data, isLoading } = useQuery({
     queryKey: ['replies', { status: 'PENDING' }],
     queryFn: () => repliesApi.getAll({ status: 'PENDING' }).then((r) => r.data.data),
   });
 
   return (
+    <>
     <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
       <div style={{ marginBottom: 32 }}>
         <p style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.4)', marginBottom: 4 }}>06 — Engagement</p>
@@ -145,10 +148,12 @@ export default function ReplyQueuePage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 24 }}>
           {data?.map((reply) => (
-            <ReplyCard key={reply.id} reply={reply} />
+            <ReplyCard key={reply.id} reply={reply} toast={toast} />
           ))}
         </div>
       )}
     </div>
+    <ToastContainer toasts={toasts} />
+    </>
   );
 }

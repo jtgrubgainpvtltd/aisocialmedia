@@ -2,13 +2,15 @@ import { useState, useCallback } from 'react'
 import Cropper from 'react-easy-crop'
 import getCroppedImg from '../utils/cropImage'
 import BRANDING from '../constants/branding'
+import { useToast, ToastContainer } from './Toast'
 
 export default function ImageCropperModal({ open, imageSrc, onClose, onCropCompleteCallback }) {
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
-  const [aspect, setAspect] = useState(1) // Default to 1:1
+  const [aspect, setAspect] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
   const [processing, setProcessing] = useState(false)
+  const { toasts, toast } = useToast()
 
   const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels)
@@ -23,7 +25,7 @@ export default function ImageCropperModal({ open, imageSrc, onClose, onCropCompl
       onClose()
     } catch (e) {
       console.error(e)
-      alert('Failed to crop image')
+      toast.error('Failed to crop image — try again')
     } finally {
       setProcessing(false)
     }
@@ -32,8 +34,9 @@ export default function ImageCropperModal({ open, imageSrc, onClose, onCropCompl
   if (!open) return null
 
   return (
+    <>
     <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0, 0, 0, 0.85)', zIndex: 9999,
       display: 'flex', flexDirection: 'column',
       backdropFilter: 'blur(10px)'
@@ -137,5 +140,7 @@ export default function ImageCropperModal({ open, imageSrc, onClose, onCropCompl
         </div>
       </div>
     </div>
+    <ToastContainer toasts={toasts} />
+    </>
   )
 }

@@ -1,8 +1,15 @@
-import OpenAI from 'openai';
-import logger from '../utils/logger.js';
+import OpenAI from "openai";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import logger from "../utils/logger.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const UPLOADS_DIR = path.resolve(__dirname, "../../public/uploads");
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 /** Retryable OpenAI status codes: Rate Limit & Service Unavailable */
@@ -15,7 +22,7 @@ const BASE_DELAY_MS = 1500;
  * Retries up to MAX_RETRIES times for transient errors (429, 503).
  * Delays: 1.5s → 3s → 6s
  */
-async function withRetry(fn, label = 'OpenAI call') {
+async function withRetry(fn, label = "OpenAI call") {
   let lastError;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -30,10 +37,13 @@ async function withRetry(fn, label = 'OpenAI call') {
       }
 
       const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-      logger.warn(`${label} failed (status ${status}). Retrying in ${delay}ms... (attempt ${attempt + 1}/${MAX_RETRIES})`, {
-        error: err.message
-      });
-      await new Promise(r => setTimeout(r, delay));
+      logger.warn(
+        `${label} failed (status ${status}). Retrying in ${delay}ms... (attempt ${attempt + 1}/${MAX_RETRIES})`,
+        {
+          error: err.message,
+        },
+      );
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
   throw lastError;
@@ -41,13 +51,16 @@ async function withRetry(fn, label = 'OpenAI call') {
 
 function assertOpenAiCompletionShape(completion) {
   if (!completion?.choices || completion.choices.length === 0) {
-    throw new Error('OpenAI response missing choices');
+    throw new Error("OpenAI response missing choices");
   }
   if (!completion.choices[0]?.message?.content) {
-    throw new Error('OpenAI response missing message content');
+    throw new Error("OpenAI response missing message content");
   }
-  if (!completion?.usage?.total_tokens && completion?.usage?.total_tokens !== 0) {
-    throw new Error('OpenAI response missing token usage');
+  if (
+    !completion?.usage?.total_tokens &&
+    completion?.usage?.total_tokens !== 0
+  ) {
+    throw new Error("OpenAI response missing token usage");
   }
 }
 
@@ -58,8 +71,11 @@ function assertOpenAiCompletionShape(completion) {
  * @param {string} params.restaurantType - Type of cuisine
  * @param {string} params.city - City location
  * @param {string} params.tone - Tone of the caption (casual, professional, fun, etc.)
+ * @param {string} params.language - Language preference (ENGLISH, HINDI, BILINGUAL)
  * @param {string} params.occasion - Special occasion or event (optional)
  * @param {string} params.dishName - Specific dish to highlight (optional)
+ * @param {boolean} params.addEmojis - Include emojis in caption
+ * @param {boolean} params.includeCTA - Include call-to-action
  * @param {Array} params.hashtags - Suggested hashtags (optional)
  * @returns {Promise<Object>} Generated caption and metadata
  */
@@ -67,18 +83,45 @@ export const generateCaption = async ({
   restaurantName,
   restaurantType,
   city,
-  tone = 'casual',
+  tone = "casual",
+  language = "BILINGUAL",
   occasion = null,
   dishName = null,
-  hashtags = []
+  addEmojis = true,
+  includeCTA = false,
+  hashtags = [],
 }) => {
   try {
-    logger.info('Generating caption with OpenAI GPT-4', {
+    logger.info("Generating caption with OpenAI GPT-4", {
       restaurantName,
       restaurantType,
       city,
-      tone
+      tone,
+      language,
     });
+
+    // Language-specific instructions
+    let languageInstruction = "";
+    if (language === "HINDI") {
+      languageInstruction =
+        "Write the caption ENTIRELY in Hindi (Devanagari script).";
+    } else if (language === "ENGLISH") {
+      languageInstruction = "Write the caption ENTIRELY in English.";
+    } else {
+      // BILINGUAL
+      languageInstruction =
+        "Write the caption in BOTH English and Hindi. Format: English version first, then a blank line, then Hindi version in Devanagari script.";
+    }
+
+    // Emoji instruction
+    const emojiInstruction = addEmojis
+      ? "Include 1-2 relevant emojis naturally throughout the text."
+      : "Do NOT use any emojis.";
+
+    // CTA instruction
+    const ctaInstruction = includeCTA
+      ? 'End with a clear call-to-action like "Order now!", "Visit us today!", or "Book your table!"'
+      : "";
 
     const prompt = `You are a social media marketing expert for restaurants. Generate an engaging Instagram/Facebook caption for:
 
@@ -86,43 +129,48 @@ Restaurant: ${restaurantName}
 Cuisine Type: ${restaurantType}
 Location: ${city}
 Tone: ${tone}
-${occasion ? `Occasion: ${occasion}` : ''}
-${dishName ? `Dish to Highlight: ${dishName}` : ''}
+${occasion ? `Occasion: ${occasion}` : ""}
+${dishName ? `Dish to Highlight: ${dishName}` : ""}
 
 Requirements:
-- Keep it concise (100-150 characters)
+- Keep it concise (100-150 characters per language)
 - Make it engaging and appetizing
-- Include 1-2 relevant emojis
-- ${hashtags.length > 0 ? `Use these hashtags: ${hashtags.join(', ')}` : 'Suggest 3-5 relevant hashtags'}
+- ${languageInstruction}
+- ${emojiInstruction}
+- ${ctaInstruction}
+- ${hashtags.length > 0 ? `Use these hashtags: ${hashtags.join(", ")}` : "Suggest 3-5 relevant hashtags"}
 - Match the specified tone: ${tone}
 
 Return ONLY the caption text with hashtags at the end.`;
 
     const completion = await withRetry(
-      () => openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a professional social media content creator specializing in restaurant marketing.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.8,
-        max_tokens: 300
-      }),
-      'generateCaption'
+      () =>
+        openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a professional social media content creator specializing in restaurant marketing.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.8,
+          max_tokens: 400,
+        }),
+      "generateCaption",
     );
 
     assertOpenAiCompletionShape(completion);
     const caption = completion.choices[0].message.content.trim();
 
-    logger.info('Caption generated successfully', {
+    logger.info("Caption generated successfully", {
       captionLength: caption.length,
-      tokensUsed: completion.usage.total_tokens
+      tokensUsed: completion.usage.total_tokens,
+      language,
     });
 
     return {
@@ -131,14 +179,14 @@ Return ONLY the caption text with hashtags at the end.`;
       metadata: {
         model: completion.model,
         tokensUsed: completion.usage.total_tokens,
-        finishReason: completion.choices[0].finish_reason
-      }
+        finishReason: completion.choices[0].finish_reason,
+        language,
+      },
     };
-
   } catch (error) {
-    logger.error('Error generating caption with OpenAI', {
+    logger.error("Error generating caption with OpenAI", {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     throw new Error(`OpenAI Caption Generation Failed: ${error.message}`);
@@ -146,202 +194,252 @@ Return ONLY the caption text with hashtags at the end.`;
 };
 
 /**
- * Generate image using DALL-E 3
- * @param {Object} params - Image generation parameters
- * @param {string} params.prompt - Description of the image to generate
- * @param {string} params.size - Image size (1024x1024, 1024x1792, 1792x1024)
- * @param {string} params.quality - Quality (standard, hd)
- * @param {string} params.style - Style (vivid, natural)
- * @returns {Promise<Object>} Generated image URL and metadata
+ * Save a base64 image string to disk and return its public path.
+ * gpt-image-1.5 returns b64_json, not a temporary URL.
+ * @param {string} b64_json - Base64-encoded image data
+ * @returns {Promise<string>} Public path, e.g. "/uploads/generated_xxx.jpg"
+ */
+async function saveGeneratedImage(b64_json) {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+  const fileName = `generated_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
+  const filePath = path.join(UPLOADS_DIR, fileName);
+  await fs.promises.writeFile(filePath, Buffer.from(b64_json, "base64"));
+  logger.info("Generated image saved", { fileName });
+  return `/uploads/${fileName}`;
+}
+
+/**
+ * Generate a marketing poster image using gpt-image-1.5
+ * The model renders text, logos, and layouts natively — no post-processing needed.
+ *
+ * @param {Object} params
+ * @param {string} params.prompt  - Full marketing poster prompt
+ * @param {string} params.size    - "1024x1024" | "1024x1536" | "1536x1024"
+ * @param {string} params.quality - "low" | "medium" | "high" | "auto"
+ * @returns {Promise<{ success: boolean, imageUrl: string, metadata: object }>}
  */
 export const generateImage = async ({
   prompt,
-  size = '1024x1024',
-  quality = 'standard',
-  style = 'vivid'
+  size = "1024x1024",
+  quality = "high",
 }) => {
   try {
-    logger.info('Generating image with DALL-E 3', {
-      prompt: prompt.substring(0, 100),
+    logger.info("Generating image with gpt-image-1.5", {
+      prompt: prompt.substring(0, 120),
       size,
       quality,
-      style
     });
 
     const response = await withRetry(
-      () => openai.images.generate({
-        model: 'dall-e-3',
-        prompt,
-        n: 1,
-        size,
-        quality,
-        style
-      }),
-      'generateImage (DALL-E 3)'
+      () =>
+        openai.images.generate({
+          model: "gpt-image-1.5",
+          prompt,
+          n: 1,
+          size,
+          quality,
+          // NOTE: gpt-image-1.5 does NOT accept a "style" parameter.
+          // "vivid" / "natural" are DALL-E 3 parameters and will cause a 400 error.
+        }),
+      "generateImage (gpt-image-1)",
     );
 
-    if (!response?.data || response.data.length === 0 || !response.data[0]?.url) {
-      throw new Error('DALL-E response missing image URL');
+    // gpt-image-1 returns b64_json by default, not a temporary URL
+    if (!response?.data?.[0]?.b64_json) {
+      throw new Error("gpt-image-1 response is missing b64_json data");
     }
 
-    const imageUrl = response.data[0].url;
-    const revisedPrompt = response.data[0].revised_prompt || prompt;
+    const imageUrl = await saveGeneratedImage(response.data[0].b64_json);
 
-    logger.info('Image generated successfully', {
-      imageUrl: imageUrl.substring(0, 50) + '...',
-      revisedPrompt: revisedPrompt.substring(0, 100)
-    });
+    logger.info("gpt-image-1 image generated and saved", { imageUrl });
 
     return {
       success: true,
       imageUrl,
-      revisedPrompt,
       metadata: {
-        model: 'dall-e-3',
+        model: "gpt-image-1",
         size,
         quality,
-        style,
-        originalPrompt: prompt
-      }
+      },
     };
-
   } catch (error) {
-    logger.error('Error generating image with DALL-E', {
+    logger.error("Error generating image with gpt-image-1.5", {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
-
-    throw new Error(`DALL-E Image Generation Failed: ${error.message}`);
+    throw new Error(`gpt-image-1.5 Image Generation Failed: ${error.message}`);
   }
 };
 
-import fs from 'fs';
-import path from 'path';
-
 /**
- * Generate branded promotional poster prompt for DALL-E
+ * Constructs a highly-detailed marketing poster prompt for gpt-image-1.5.
+ *
+ * gpt-image-1.5 can render crisp, professional typography natively when given
+ * explicit typographic instructions. This prompt enforces that.
  */
 export const generateFoodPrompt = ({
   restaurantName,
   cuisineType,
-  cityName = '',
-  area = '',
-  brandTone = 'modern',
-  signatureDishes = '',
-  campaignType = 'General Branding',
-  description = '',
-  style = 'appetizing'
+  cityName = "",
+  area = "",
+  brandTone = "modern",
+  signatureDishes = "",
+  campaignType = "General Branding",
+  description = "",
 }) => {
-  const baseInstructions = `A highly professional, premium social media promotional poster for a restaurant named "${restaurantName}". The style is high-end graphic design for a "${brandTone}" brand. NEVER generate random gibberish text or pseudo-words.`;
-  
-  let brandingInstruction = `The poster MUST prominently feature the exact text "${restaurantName}" in elegant, bold typography. The vibe is "${brandTone}".`;
-  
-  if (cityName || area) {
-    brandingInstruction += ` It should subtly reflect the essence of its location: ${area ? `${area}, ` : ''}${cityName}.`;
-  }
+  // ── Brand tone → visual design language ──────────────────────────────────
+  const toneMap = {
+    modern:
+      "clean minimalist layout, geometric sans-serif bold headline, crisp white space, dark navy and teal accent palette",
+    elegant:
+      "luxury editorial design, high-contrast serif display typeface, rich black and gold palette, fine-dining ambiance",
+    fun: "bold vibrant poster style, large rounded chunky typeface, electric saturated colors, playful street-food energy",
+    casual:
+      "warm earthy tones, approachable friendly headline, bistro-style layout, hand-crafted aesthetic",
+    professional:
+      "structured grid layout, authoritative clean sans-serif, muted corporate palette, premium business feel",
+  };
+  const visualStyle = toneMap[brandTone] || toneMap.modern;
 
-  let sceneInstruction = '';
-  if (campaignType === 'Festival Greeting') {
-    sceneInstruction = `Integrated festive elements along with appetizing ${cuisineType} food. Large bold header: "HAPPY FESTIVAL".`;
-  } else if (campaignType === 'Discount Offer') {
-    sceneInstruction = `Bold marketing-focused layout with "EXCLUSIVE OFFER" and "ORDER NOW" text. Feature the price/value prominently if provided in context: ${description}.`;
-  } else {
-    sceneInstruction = `Focus on appetizing ${cuisineType} imagery.${signatureDishes ? ` Specifically highlight elements of ${signatureDishes}.` : ''}`;
-  }
+  // ── Campaign-type specific layout instructions ────────────────────────────
+  const campaignMap = {
+    "General Branding": `Aspirational lifestyle food photography. Hero shot of the food with the restaurant name as the dominant typographic element. Balanced, editorial layout.`,
+    "Festival Greeting": `Festive Indian celebration motifs — diyas, marigold flowers, rangoli colour splashes. The word "Celebrating" in smaller text above the restaurant name. Warm golden-hour lighting. Joyful and premium.`,
+    "Discount Offer": `Bold promotional banner layout. Large attention-grabbing offer text (e.g. "EXCLUSIVE OFFER" or the offer from context below) in a contrasting pill/badge shape. Urgency-driven design. Red and white accent.`,
+    "Menu Highlight": `Close-up photorealistic hero shot of the signature dish as the centrepiece. The dish should look steam-fresh, perfectly styled. Restaurant name anchored at top.`,
+  };
+  const campaignInstruction =
+    campaignMap[campaignType] || campaignMap["General Branding"];
 
-  const prompt = `${baseInstructions} ${brandingInstruction} ${sceneInstruction} Cuisine: ${cuisineType}. ${description ? `Context: ${description}.` : ''} Style: Vector graphic style with high-quality photorealistic food elements, clean layout, vibrant colors, marketing agency quality. No typos.`;
+  // ── Food description ──────────────────────────────────────────────────────
+  const dishInstruction = signatureDishes
+    ? `FEATURED FOOD: Photorealistic, steaming, delicious presentation of: ${signatureDishes}. Use dramatic lighting to make it irresistible.`
+    : `FEATURED FOOD: Showcase appetizing, photorealistic ${cuisineType} cuisine. Food should look fresh, vibrant, and premium.`;
 
-  return prompt;
+  // ── Location flavour ──────────────────────────────────────────────────────
+  const locationNote =
+    cityName || area
+      ? `LOCATION ESSENCE: Subtly evoke the cultural character of ${[area, cityName].filter(Boolean).join(", ")}, India — through colour, texture, or atmospheric detail.`
+      : "";
+
+  // ── Extra context ─────────────────────────────────────────────────────────
+  const contextNote = description ? `ADDITIONAL CONTEXT: ${description}` : "";
+
+  // ── Assemble the full prompt ──────────────────────────────────────────────
+  return `
+TASK: Create a professional, print-ready social media marketing poster.
+
+━━━ RESTAURANT ━━━
+Name: "${restaurantName}"
+Cuisine: ${cuisineType}
+
+━━━ TYPOGRAPHY — THIS IS THE MOST CRITICAL REQUIREMENT ━━━
+• The restaurant name "${restaurantName}" MUST appear as the primary headline.
+• Every single letter must be PERFECTLY rendered: sharp edges, correct spelling, professional kerning.
+• The typeface must look like it was set by a senior graphic designer in Adobe Illustrator or Figma.
+• Zero blurriness, zero warped letters, zero misspellings, zero garbled or melted text.
+• Text must look IDENTICAL to how it would appear on a real printed poster.
+• Treat the text rendering with the same precision as a billboard advertisement.
+
+━━━ VISUAL DESIGN STYLE ━━━
+${visualStyle}
+
+━━━ CAMPAIGN LAYOUT ━━━
+${campaignInstruction}
+
+━━━ FOOD IMAGERY ━━━
+${dishInstruction}
+
+${locationNote}
+${contextNote}
+
+━━━ TECHNICAL OUTPUT REQUIREMENTS ━━━
+• Ultra-high-fidelity photorealistic quality.
+• Ready to post directly on Instagram / Facebook — no further editing needed.
+• Professional marketing agency standard (think Zomato or Swiggy campaign quality).
+• Perfectly balanced composition: text takes 30–40% of space, visuals take 60–70%.
+• No watermarks. No stock-photo borders. No lorem ipsum placeholder text.
+`.trim();
 };
 
 /**
- * Download image from URL and save to public/uploads
- */
-const downloadAndSaveImage = async (imageUrl) => {
-  try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const fileName = `generated_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-    
-    // Ensure the uploads directory exists
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-    
-    const filePath = path.join(uploadsDir, fileName);
-    fs.writeFileSync(filePath, buffer);
-    
-    // Return the relative URL string that Vite can serve
-    return `/uploads/${fileName}`;
-  } catch (err) {
-    logger.error('Error saving downloaded image to public/uploads', { error: err.message });
-    return imageUrl; // Fallback to original DALL-E url if saving fails
-  }
-};
-
-/**
- * Generate full content package (caption + image)
- * @param {Object} params - Content generation parameters
- * @returns {Promise<Object>} Complete content package
+ * Generate a complete content package (AI caption + gpt-image-1.5 branded poster).
+ * The compositor pipeline is intentionally removed:
+ * gpt-image-1.5 renders restaurant name, layout, and branding natively in one call.
  */
 export const generateFullContent = async (params) => {
   try {
-    logger.info('Generating full branded content package', { params });
+    logger.info("Generating full content package with gpt-image-1.5", {
+      restaurantName: params.restaurantName,
+      campaignType: params.campaignType,
+      language: params.language,
+    });
 
-    // Generate caption first
-    const captionResult = await generateCaption(params);
+    // ── Step 1: Generate caption ───────────────────────────────────────────
+    const captionResult = await generateCaption({
+      restaurantName: params.restaurantName,
+      restaurantType: params.restaurantType,
+      city: params.city,
+      tone: params.tone,
+      language: params.language || "BILINGUAL",
+      occasion: params.occasion,
+      dishName: params.dishName,
+      addEmojis: params.addEmojis !== undefined ? params.addEmojis : true,
+      includeCTA: params.includeCTA || false,
+      hashtags: params.hashtags || [],
+    });
 
-    // Generate food photography prompt with FULL restaurant context
+    // ── Step 2: Build the gpt-image-1.5 poster prompt ────────────────────────
     const imagePrompt = generateFoodPrompt({
       restaurantName: params.restaurantName,
       cuisineType: params.restaurantType,
       cityName: params.city,
-      area: params.area || '',
-      brandTone: params.tone || 'modern',
-      signatureDishes: params.signatureDishes || '',
-      campaignType: params.campaignType,
-      description: params.prompt || params.occasion || params.dishDescription,
-      style: params.imageStyle || 'appetizing'
+      area: params.area || "",
+      brandTone: params.tone || "modern",
+      signatureDishes: params.signatureDishes || "",
+      campaignType: params.campaignType || "General Branding",
+      description:
+        params.prompt || params.occasion || params.dishDescription || "",
     });
 
-    // Generate image from DALL-E
+    // ── Step 3: Generate the image — gpt-image-1.5 renders text natively ─────
+    // Map legacy imageSize values to gpt-image-1.5 supported sizes
+    const sizeMap = {
+      "1024x1024": "1024x1024",
+      "1024x1792": "1024x1536", // gpt-image-1.5 portrait equivalent
+      "1792x1024": "1536x1024", // gpt-image-1.5 landscape equivalent
+    };
+    const resolvedSize = sizeMap[params.imageSize] || "1024x1024";
+
     const imageResult = await generateImage({
       prompt: imagePrompt,
-      size: params.imageSize || '1024x1024',
-      quality: params.imageQuality || 'standard',
-      style: params.dalleStyle || 'vivid'
+      size: resolvedSize,
+      quality: "high", // Always use 'high' for production marketing assets
     });
 
-    // Download and save the ephemeral DALL-E image to public/uploads
-    let finalImageUrl = imageResult.imageUrl;
-    if (finalImageUrl) {
-      finalImageUrl = await downloadAndSaveImage(finalImageUrl);
-    }
-
-    logger.info('Full branded content package generated successfully');
+    logger.info("Full content package generated successfully", {
+      imageUrl: imageResult.imageUrl,
+    });
 
     return {
       success: true,
       caption: captionResult.caption,
-      imageUrl: finalImageUrl,
+      imageUrl: imageResult.imageUrl,
       metadata: {
         caption: captionResult.metadata,
         image: imageResult.metadata,
         generatedAt: new Date().toISOString(),
-        usedPrompt: imagePrompt
-      }
+        usedPrompt: imagePrompt,
+        brandingApplied: false, // gpt-image-1.5 handles branding natively in the image
+      },
     };
-
   } catch (error) {
-    logger.error('Content Generation Failed', {
+    logger.error("Content Generation Failed", {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
-
     throw new Error(`Content Generation Failed: ${error.message}`);
   }
 };
@@ -352,8 +450,11 @@ export const generateFullContent = async (params) => {
  */
 export const getDynamicLocalEvents = async (city) => {
   try {
-    const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'full' });
-    
+    const today = new Date().toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      dateStyle: "full",
+    });
+
     // Prompt the AI to identify upcoming events and return exactly a JSON array
     const prompt = `You are a Live Local Events Engine. The current date is ${today}. The user's city is ${city}, India.
 Identify exactly 1 major upcoming or ongoing sports event relevant to ${city} (like IPL, local cricket, football) AND 1 major upcoming Indian cultural festival or holiday within the next 30 days.
@@ -372,32 +473,37 @@ Raw JSON array only:`;
     logger.info(`Fetching dynamic local events for ${city} via OpenAI...`);
 
     const completion = await withRetry(
-      () => openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 400
-      }),
-      'getDynamicLocalEvents'
+      () =>
+        openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.3,
+          max_tokens: 400,
+        }),
+      "getDynamicLocalEvents",
     );
 
     const content = completion.choices[0]?.message?.content?.trim();
     if (!content) return [];
 
     // Strip markdown formatting if AI still decided to include it
-    const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
-    
+    const cleanJson = content
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
     const events = JSON.parse(cleanJson);
-    
+
     // Map them to the dashboard format by ensuring an ID and icon
     return events.map((ev, i) => ({
       ...ev,
       id: `dynamic-event-${Date.now()}-${i}`,
-      icon: ev.source.toLowerCase().includes('sport') ? 'event' : 'google'
+      icon: ev.source.toLowerCase().includes("sport") ? "event" : "google",
     }));
-
   } catch (error) {
-    logger.error('Error fetching dynamic events from OpenAI', { error: error.message });
+    logger.error("Error fetching dynamic events from OpenAI", {
+      error: error.message,
+    });
     return []; // Graceful fallback
   }
 };
@@ -431,23 +537,24 @@ Return a JSON object:
 }`;
 
   const completion = await withRetry(
-    () => openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Comment: "${comment}"` }
-      ],
-      response_format: { type: 'json_object' },
-      max_tokens: 200,
-      temperature: 0.6
-    }),
-    'OpenAI draftCommentReply'
+    () =>
+      openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Comment: "${comment}"` },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 200,
+        temperature: 0.6,
+      }),
+    "OpenAI draftCommentReply",
   );
 
   assertOpenAiCompletionShape(completion);
   const result = JSON.parse(completion.choices[0].message.content);
 
-  logger.info('Generated AI reply', { type: result.type });
+  logger.info("Generated AI reply", { type: result.type });
   return result;
 };
 
@@ -457,5 +564,5 @@ export default {
   generateFoodPrompt,
   generateFullContent,
   getDynamicLocalEvents,
-  draftCommentReply
+  draftCommentReply,
 };

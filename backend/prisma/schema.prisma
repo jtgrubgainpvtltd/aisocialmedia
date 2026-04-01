@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,7 +7,342 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==================== ENUMS ====================
+model ConfigSetting {
+  id           Int       @id @default(autoincrement())
+  config_key   String    @unique
+  config_value String
+  description  String?
+  is_active    Boolean   @default(true)
+  iud_flag     IudFlag   @default(I)
+  created_by   String
+  created_on   DateTime  @default(now())
+  updated_by   String?
+  updated_on   DateTime? @updatedAt
+
+  @@map("config_settings")
+}
+
+model User {
+  id                  Int            @id @default(autoincrement())
+  email               String         @unique
+  password_hash       String
+  role                UserRole       @default(RESTAURANT_OWNER)
+  status              UserStatus     @default(ACTIVE)
+  email_verified      Boolean        @default(false)
+  verification_token  String?
+  reset_token         String?
+  reset_token_expires DateTime?
+  iud_flag            IudFlag        @default(I)
+  created_by          String
+  created_on          DateTime       @default(now())
+  updated_by          String?
+  updated_on          DateTime?      @updatedAt
+  refreshTokens       RefreshToken[]
+  restaurant          Restaurant?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  token      String    @unique
+  expires_at DateTime
+  iud_flag   IudFlag   @default(I)
+  created_by String
+  created_on DateTime  @default(now())
+  updated_by String?
+  updated_on DateTime? @updatedAt
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Restaurant {
+  id                  Int                @id @default(autoincrement())
+  user_id             Int                @unique
+  name                String
+  city                String
+  area                String?
+  cuisine_type        String?
+  target_audience     String?
+  brand_tone          String?
+  language_preference LangPref           @default(BILINGUAL)
+  about_description   String?
+  signature_dishes    String?
+  standard_offers     String?
+  hashtags            String?
+  logo_url            String?
+  iud_flag            IudFlag            @default(I)
+  created_by          String
+  created_on          DateTime           @default(now())
+  updated_by          String?
+  updated_on          DateTime?          @updatedAt
+  avg_order_value     Decimal?           @db.Decimal(10, 2)
+  brand_color         String?
+  brand_story         String?
+  contact_email       String?
+  facebook_page       String?
+  fssai_license       String?
+  full_address        String?
+  google_maps_url     String?
+  gst_number          String?
+  instagram_handle    String?
+  latitude            Decimal?           @db.Decimal(10, 8)
+  longitude           Decimal?           @db.Decimal(11, 8)
+  mascot_url          String?
+  opening_hours       Json?
+  owner_name          String?
+  phone_number        String?
+  price_range         String?
+  tagline             String?
+  twitter_handle      String?
+  website             String?
+  aiInsights          AiInsight[]
+  analyticsMetrics    AnalyticsMetric[]
+  brandAssets         BrandAsset[]
+  commentReplies      CommentReply[]
+  generatedContent    GeneratedContent[]
+  integrations        Integration[]
+  postingRules        PostingRules?
+  publishedPosts      PublishedPost[]
+  user                User               @relation(fields: [user_id], references: [id])
+  savedTrends         SavedTrend[]
+  scheduledPosts      ScheduledPost[]
+
+  @@map("restaurants")
+}
+
+model BrandAsset {
+  id                   Int        @id @default(autoincrement())
+  restaurant_id        Int
+  asset_type           AssetType
+  file_url             String
+  file_name            String
+  file_size            Int
+  cloudinary_public_id String?
+  iud_flag             IudFlag    @default(I)
+  created_by           String
+  created_on           DateTime   @default(now())
+  updated_by           String?
+  updated_on           DateTime?  @updatedAt
+  restaurant           Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@map("brand_assets")
+}
+
+model GeneratedContent {
+  id              Int             @id @default(autoincrement())
+  restaurant_id   Int
+  platform        Platform
+  language        String
+  tone            String
+  prompt          String
+  caption_english String?
+  caption_hindi   String?
+  hashtags        String?
+  include_cta     Boolean         @default(false)
+  add_emojis      Boolean         @default(false)
+  auto_hashtags   Boolean         @default(false)
+  image_url       String?
+  status          ContentStatus   @default(DRAFT)
+  iud_flag        IudFlag         @default(I)
+  created_by      String
+  created_on      DateTime        @default(now())
+  updated_by      String?
+  updated_on      DateTime?       @updatedAt
+  restaurant      Restaurant      @relation(fields: [restaurant_id], references: [id])
+  scheduledPosts  ScheduledPost[]
+
+  @@map("generated_content")
+}
+
+model ScheduledPost {
+  id              Int               @id @default(autoincrement())
+  restaurant_id   Int
+  content_id      Int?
+  platform        Platform
+  scheduled_date  DateTime
+  scheduled_time  String
+  caption         String
+  image_url       String?
+  status          ScheduledStatus   @default(PENDING)
+  estimated_reach Int?
+  actual_reach    Int?
+  published_at    DateTime?
+  error_message   String?
+  iud_flag        IudFlag           @default(I)
+  created_by      String
+  created_on      DateTime          @default(now())
+  updated_by      String?
+  updated_on      DateTime?         @updatedAt
+  publishedPost   PublishedPost?
+  content         GeneratedContent? @relation(fields: [content_id], references: [id])
+  restaurant      Restaurant        @relation(fields: [restaurant_id], references: [id])
+
+  @@map("scheduled_posts")
+}
+
+model PublishedPost {
+  id                Int               @id @default(autoincrement())
+  restaurant_id     Int
+  scheduled_post_id Int?              @unique
+  platform          Platform
+  platform_post_id  String?
+  title             String
+  caption           String
+  image_url         String?
+  published_date    DateTime
+  published_time    String
+  views             Int               @default(0)
+  engagement        Int               @default(0)
+  link_clicks       Int               @default(0)
+  saves_shares      Int               @default(0)
+  comments          Int               @default(0)
+  iud_flag          IudFlag           @default(I)
+  created_by        String
+  created_on        DateTime          @default(now())
+  updated_by        String?
+  updated_on        DateTime?         @updatedAt
+  metrics           AnalyticsMetric[]
+  restaurant        Restaurant        @relation(fields: [restaurant_id], references: [id])
+  scheduledPost     ScheduledPost?    @relation(fields: [scheduled_post_id], references: [id])
+
+  @@index([restaurant_id, published_date])
+  @@map("published_posts")
+}
+
+model AnalyticsMetric {
+  id            Int            @id @default(autoincrement())
+  restaurant_id Int
+  post_id       Int?
+  metric_type   MetricType
+  metric_value  Decimal        @db.Decimal(10, 2)
+  date          DateTime
+  platform      Platform?
+  iud_flag      IudFlag        @default(I)
+  created_by    String
+  created_on    DateTime       @default(now())
+  updated_by    String?
+  updated_on    DateTime?      @updatedAt
+  post          PublishedPost? @relation(fields: [post_id], references: [id])
+  restaurant    Restaurant     @relation(fields: [restaurant_id], references: [id])
+
+  @@index([restaurant_id, date])
+  @@map("analytics_metrics")
+}
+
+model Integration {
+  id               Int        @id @default(autoincrement())
+  restaurant_id    Int
+  platform         Platform
+  connected        Boolean    @default(false)
+  account_handle   String?
+  access_token     String?
+  refresh_token    String?
+  token_expires_at DateTime?
+  last_synced_at   DateTime?
+  iud_flag         IudFlag    @default(I)
+  created_by       String
+  created_on       DateTime   @default(now())
+  updated_by       String?
+  updated_on       DateTime?  @updatedAt
+  restaurant       Restaurant @relation(fields: [restaurant_id], references: [id])
+
+  @@unique([restaurant_id, platform])
+  @@map("integrations")
+}
+
+model PostingRules {
+  id                          Int        @id @default(autoincrement())
+  restaurant_id               Int        @unique
+  auto_add_hashtags_instagram Boolean    @default(true)
+  auto_shorten_twitter        Boolean    @default(true)
+  remove_hindi_google         Boolean    @default(false)
+  iud_flag                    IudFlag    @default(I)
+  created_by                  String
+  created_on                  DateTime   @default(now())
+  updated_by                  String?
+  updated_on                  DateTime?  @updatedAt
+  restaurant                  Restaurant @relation(fields: [restaurant_id], references: [id])
+
+  @@map("posting_rules")
+}
+
+model CityTrend {
+  id                 Int          @id @default(autoincrement())
+  city               String
+  type               TrendType
+  title              String
+  description        String
+  source             String
+  impact_level       ImpactLevel
+  suggested_angle    String?
+  trend_date         DateTime
+  expires_at         DateTime?
+  iud_flag           IudFlag      @default(I)
+  created_by         String
+  created_on         DateTime     @default(now())
+  updated_by         String?
+  updated_on         DateTime?    @updatedAt
+  savedByRestaurants SavedTrend[]
+
+  @@index([city, trend_date])
+  @@map("city_trends")
+}
+
+model SavedTrend {
+  id            Int        @id @default(autoincrement())
+  restaurant_id Int
+  trend_id      Int
+  notes         String?
+  saved_at      DateTime   @default(now())
+  iud_flag      IudFlag    @default(I)
+  created_by    String
+  created_on    DateTime   @default(now())
+  updated_by    String?
+  updated_on    DateTime?  @updatedAt
+  restaurant    Restaurant @relation(fields: [restaurant_id], references: [id])
+  trend         CityTrend  @relation(fields: [trend_id], references: [id])
+
+  @@unique([restaurant_id, trend_id])
+  @@map("saved_trends")
+}
+
+model AiInsight {
+  id             Int         @id @default(autoincrement())
+  restaurant_id  Int
+  insight_text   String
+  insight_type   InsightType
+  date_generated DateTime    @default(now())
+  iud_flag       IudFlag     @default(I)
+  created_by     String
+  created_on     DateTime    @default(now())
+  updated_by     String?
+  updated_on     DateTime?   @updatedAt
+  restaurant     Restaurant  @relation(fields: [restaurant_id], references: [id])
+
+  @@map("ai_insights")
+}
+
+model CommentReply {
+  id               Int         @id @default(autoincrement())
+  restaurant_id    Int
+  platform_post_id String?
+  commenter_name   String
+  comment_text     String
+  comment_type     CommentType @default(OTHER)
+  ai_draft_reply   String
+  status           ReplyStatus @default(PENDING)
+  iud_flag         IudFlag     @default(I)
+  created_by       String
+  created_on       DateTime    @default(now())
+  updated_by       String?
+  updated_on       DateTime?   @updatedAt
+  restaurant       Restaurant  @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@map("comment_replies")
+}
 
 enum IudFlag {
   I
@@ -102,389 +434,4 @@ enum ReplyStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-// ==================== MODELS ====================
-
-model ConfigSetting {
-  id            Int       @id @default(autoincrement())
-  config_key    String    @unique
-  config_value  String    @db.Text
-  description   String?
-  is_active     Boolean   @default(true)
-
-  // Audit columns
-  iud_flag      IudFlag   @default(I)
-  created_by    String
-  created_on    DateTime  @default(now())
-  updated_by    String?
-  updated_on    DateTime? @updatedAt
-
-  @@map("config_settings")
-}
-
-model User {
-  id                  Int            @id @default(autoincrement())
-  email               String         @unique
-  password_hash       String
-  role                UserRole       @default(RESTAURANT_OWNER)
-  status              UserStatus     @default(ACTIVE)
-  email_verified      Boolean        @default(false)
-  verification_token  String?
-  reset_token         String?
-  reset_token_expires DateTime?
-
-  // Relations
-  restaurant    Restaurant?
-  refreshTokens RefreshToken[]
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("users")
-}
-
-model RefreshToken {
-  id         Int      @id @default(autoincrement())
-  user_id    Int
-  token      String   @unique
-  expires_at DateTime
-
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("refresh_tokens")
-}
-
-model Restaurant {
-  id                  Int      @id @default(autoincrement())
-  user_id             Int      @unique
-  name                String
-  city                String
-  area                String?
-  phone_number        String?
-  contact_email       String?
-  website             String?
-  google_maps_url     String?
-  full_address        String?  @db.Text
-  latitude            Decimal? @db.Decimal(10, 8)
-  longitude           Decimal? @db.Decimal(11, 8)
-  cuisine_type        String?
-  target_audience     String?  @db.Text
-  brand_tone          String?
-  language_preference LangPref @default(BILINGUAL)
-  about_description   String?  @db.Text
-  signature_dishes    String?  @db.Text
-  standard_offers     String?  @db.Text
-  hashtags            String?  @db.Text
-  logo_url            String?
-  tagline             String?
-  mascot_url          String?
-  brand_color         String?
-  brand_story         String?  @db.Text
-  opening_hours       Json?
-  price_range         String?
-  avg_order_value     Decimal? @db.Decimal(10, 2)
-  gst_number          String?
-  fssai_license       String?
-  owner_name          String?
-  instagram_handle    String?
-  facebook_page       String?
-  twitter_handle      String?
-
-  // Relations
-  user             User               @relation(fields: [user_id], references: [id])
-  brandAssets      BrandAsset[]
-  generatedContent GeneratedContent[]
-  scheduledPosts   ScheduledPost[]
-  publishedPosts   PublishedPost[]
-  integrations     Integration[]
-  postingRules     PostingRules?
-  savedTrends      SavedTrend[]
-  analyticsMetrics AnalyticsMetric[]
-  aiInsights       AiInsight[]
-  commentReplies   CommentReply[]
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("restaurants")
-}
-
-model BrandAsset {
-  id                   Int        @id @default(autoincrement())
-  restaurant_id        Int
-  asset_type           AssetType
-  file_url             String
-  file_name            String
-  file_size            Int
-  cloudinary_public_id String?
-
-  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("brand_assets")
-}
-
-model GeneratedContent {
-  id              Int           @id @default(autoincrement())
-  restaurant_id   Int
-  platform        Platform
-  language        String
-  tone            String
-  prompt          String        @db.Text
-  caption_english String?       @db.Text
-  caption_hindi   String?       @db.Text
-  hashtags        String?       @db.Text
-  include_cta     Boolean       @default(false)
-  add_emojis      Boolean       @default(false)
-  auto_hashtags   Boolean       @default(false)
-  image_url       String?
-  status          ContentStatus @default(DRAFT)
-
-  restaurant     Restaurant      @relation(fields: [restaurant_id], references: [id])
-  scheduledPosts ScheduledPost[]
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("generated_content")
-}
-
-model ScheduledPost {
-  id              Int             @id @default(autoincrement())
-  restaurant_id   Int
-  content_id      Int?
-  platform        Platform
-  scheduled_date  DateTime
-  scheduled_time  String
-  caption         String          @db.Text
-  image_url       String?
-  status          ScheduledStatus @default(PENDING)
-  estimated_reach Int?
-  actual_reach    Int?
-  published_at    DateTime?
-  error_message   String?
-
-  restaurant    Restaurant          @relation(fields: [restaurant_id], references: [id])
-  content       GeneratedContent?   @relation(fields: [content_id], references: [id])
-  publishedPost PublishedPost?
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("scheduled_posts")
-}
-
-model PublishedPost {
-  id                Int      @id @default(autoincrement())
-  restaurant_id     Int
-  scheduled_post_id Int?     @unique
-  platform          Platform
-  platform_post_id  String?
-  title             String
-  caption           String   @db.Text
-  image_url         String?
-  published_date    DateTime
-  published_time    String
-  views             Int      @default(0)
-  engagement        Int      @default(0)
-  link_clicks       Int      @default(0)
-  saves_shares      Int      @default(0)
-  comments          Int      @default(0)
-
-  restaurant    Restaurant        @relation(fields: [restaurant_id], references: [id])
-  scheduledPost ScheduledPost?    @relation(fields: [scheduled_post_id], references: [id])
-  metrics       AnalyticsMetric[]
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("published_posts")
-  @@index([restaurant_id, published_date])
-}
-
-model AnalyticsMetric {
-  id           Int        @id @default(autoincrement())
-  restaurant_id Int
-  post_id      Int?
-  metric_type  MetricType
-  metric_value Decimal    @db.Decimal(10, 2)
-  date         DateTime
-  platform     Platform?
-
-  restaurant Restaurant     @relation(fields: [restaurant_id], references: [id])
-  post       PublishedPost? @relation(fields: [post_id], references: [id])
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("analytics_metrics")
-  @@index([restaurant_id, date])
-}
-
-model Integration {
-  id               Int       @id @default(autoincrement())
-  restaurant_id    Int
-  platform         Platform
-  connected        Boolean   @default(false)
-  account_handle   String?
-  access_token     String?   @db.Text
-  refresh_token    String?   @db.Text
-  token_expires_at DateTime?
-  last_synced_at   DateTime?
-
-  restaurant Restaurant @relation(fields: [restaurant_id], references: [id])
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@unique([restaurant_id, platform])
-  @@map("integrations")
-}
-
-model PostingRules {
-  id                          Int     @id @default(autoincrement())
-  restaurant_id               Int     @unique
-  auto_add_hashtags_instagram Boolean @default(true)
-  auto_shorten_twitter        Boolean @default(true)
-  remove_hindi_google         Boolean @default(false)
-
-  restaurant Restaurant @relation(fields: [restaurant_id], references: [id])
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("posting_rules")
-}
-
-model CityTrend {
-  id              Int         @id @default(autoincrement())
-  city            String
-  type            TrendType
-  title           String
-  description     String      @db.Text
-  source          String
-  impact_level    ImpactLevel
-  suggested_angle String?     @db.Text
-  trend_date      DateTime
-  expires_at      DateTime?
-
-  savedByRestaurants SavedTrend[]
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("city_trends")
-  @@index([city, trend_date])
-}
-
-model SavedTrend {
-  id            Int      @id @default(autoincrement())
-  restaurant_id Int
-  trend_id      Int
-  notes         String?  @db.Text
-  saved_at      DateTime @default(now())
-
-  restaurant Restaurant @relation(fields: [restaurant_id], references: [id])
-  trend      CityTrend  @relation(fields: [trend_id], references: [id])
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@unique([restaurant_id, trend_id])
-  @@map("saved_trends")
-}
-
-model AiInsight {
-  id             Int          @id @default(autoincrement())
-  restaurant_id  Int
-  insight_text   String       @db.Text
-  insight_type   InsightType
-  date_generated DateTime     @default(now())
-
-  restaurant Restaurant @relation(fields: [restaurant_id], references: [id])
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("ai_insights")
-}
-
-model CommentReply {
-  id               Int          @id @default(autoincrement())
-  restaurant_id    Int
-  platform_post_id String?
-  commenter_name   String
-  comment_text     String       @db.Text
-  comment_type     CommentType  @default(OTHER)
-  ai_draft_reply   String       @db.Text
-  status           ReplyStatus  @default(PENDING)
-
-  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
-
-  // Audit columns
-  iud_flag   IudFlag   @default(I)
-  created_by String
-  created_on DateTime  @default(now())
-  updated_by String?
-  updated_on DateTime? @updatedAt
-
-  @@map("comment_replies")
 }
