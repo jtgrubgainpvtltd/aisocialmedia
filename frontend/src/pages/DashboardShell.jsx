@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { replies } from '../api/client'
@@ -11,10 +11,20 @@ const ORANGE = BRANDING.colors.primary
 const TEAL = BRANDING.colors.secondary
 const NAVY = BRANDING.colors.navy
 
+const BACKEND_ORIGIN = (
+  import.meta.env.VITE_API_URL || "http://localhost:5001/api/v1"
+).replace("/api/v1", "");
+
 export default function DashboardShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  
+  const [isPinned, setIsPinned] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const hoverTimeout = useRef(null)
+  
+  const isOpen = isPinned || isHovered
+
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   // Fetch pending replies count for the badge
@@ -43,48 +53,108 @@ export default function DashboardShell() {
     navigate('/')
   }
 
-  const sidebarW = sidebarOpen ? 240 : 64
+  const handleMouseEnter = () => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current)
+    setIsHovered(true)
+  }
+
+  const handleMouseLeave = () => {
+    hoverTimeout.current = setTimeout(() => {
+      setIsHovered(false)
+    }, 150)
+  }
+
+  const sidebarW = isOpen ? 240 : 64
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F7F3EC', fontFamily: 'Inter, sans-serif' }}>
+      <style>{`
+        .pin-btn {
+          transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important;
+        }
+        .pin-btn.unpinned:hover {
+          background: rgba(255,255,255,0.08) !important;
+        }
+        .pin-btn.pinned:hover {
+          background: rgba(0,184,154,0.25) !important;
+        }
+        .pin-btn:hover {
+          transform: scale(1.05);
+        }
+        .pin-btn:active {
+          transform: scale(0.92);
+        }
+      `}</style>
       
       {/* ── SIDEBAR ── */}
-      <aside style={{
-        width: sidebarW, flexShrink: 0,
-        background: NAVY, color: 'white',
-        display: 'flex', flexDirection: 'column',
-        transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
-        overflow: 'hidden', position: 'relative', zIndex: 20,
-        boxShadow: '4px 0 24px rgba(0,0,0,0.15)',
+      <aside 
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          width: sidebarW, flexShrink: 0,
+          background: NAVY, color: 'white',
+          display: 'flex', flexDirection: 'column',
+          transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1)',
+          overflow: 'hidden', position: 'relative', zIndex: 20,
+          boxShadow: isOpen ? '4px 0 24px rgba(0,0,0,0.15)' : 'none',
       }}>
         {/* Logo */}
         <div style={{
-          padding: sidebarOpen ? '20px 20px 16px' : '20px 14px 16px',
+          padding: isOpen ? '20px 20px 16px' : '20px 14px 16px',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          transition: 'padding 0.3s'
         }}>
           <img src={BRANDING.assets.logoMark} alt="GrubGain logo" style={{ width: 32, height: 32, flexShrink: 0 }} />
-          {sidebarOpen && (
-            <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
-              <div style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '0.82rem', color: 'white', lineHeight: 1 }}>
-                {BRANDING.appName.slice(0,4)}<span style={{ color: ORANGE }}>{BRANDING.appName.slice(4)}</span>
-              </div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.36rem', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginTop: 3 }}>
-                {BRANDING.tagline}
-              </div>
+          
+          <div style={{ 
+            overflow: 'hidden', whiteSpace: 'nowrap',
+            opacity: isOpen ? 1 : 0,
+            width: isOpen ? 110 : 0,
+            transition: 'opacity 0.2s, width 0.3s',
+            pointerEvents: isOpen ? 'auto' : 'none'
+          }}>
+            <div style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '0.82rem', color: 'white', lineHeight: 1 }}>
+              {BRANDING.appName.slice(0,4)}<span style={{ color: ORANGE }}>{BRANDING.appName.slice(4)}</span>
             </div>
-          )}
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.36rem', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginTop: 3 }}>
+              {BRANDING.tagline}
+            </div>
+          </div>
+          
           <button
-            onClick={() => setSidebarOpen(o => !o)}
+            className={`pin-btn ${isPinned ? 'pinned' : 'unpinned'}`}
+            onClick={() => {
+              setIsPinned(p => {
+                if (p) setIsHovered(false); // Force collapse immediately if unpinning
+                return !p;
+              })
+            }}
+            title={isPinned ? "Unpin sidebar" : "Pin sidebar"}
             style={{
-              marginLeft: sidebarOpen ? 'auto' : 0, background: 'transparent', border: 'none',
-              cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: 4, borderRadius: 4,
-              display: 'flex', alignItems: 'center',
+              position: 'absolute', right: 16, top: 16,
+              width: 28, height: 28,
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: isPinned ? TEAL : 'rgba(255,255,255,0.4)',
+              background: isPinned ? 'rgba(0,184,154,0.12)' : 'transparent',
+              border: isPinned ? '1px solid rgba(0,184,154,0.25)' : '1px solid transparent',
+              boxShadow: isPinned ? '0 0 12px rgba(0,184,154,0.1)' : 'none',
               flexShrink: 0,
+              opacity: isOpen ? 1 : 0,
+              pointerEvents: isOpen ? 'auto' : 'none',
+              zIndex: 30,
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              {sidebarOpen ? <><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></> : <><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></>}
+            <svg 
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              style={{
+                transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
+                transform: isPinned ? 'rotate(180deg)' : 'rotate(0deg)'
+              }}
+            >
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
             </svg>
           </button>
         </div>
@@ -96,38 +166,45 @@ export default function DashboardShell() {
               key={item.to}
               to={item.to}
               end={item.end}
+              title={!isOpen ? item.label : undefined}
               style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: 12,
-                padding: sidebarOpen ? '10px 12px' : '10px',
+                padding: isOpen ? '10px 12px' : '10px',
                 borderRadius: 8, marginBottom: 2,
                 textDecoration: 'none',
                 color: isActive ? 'white' : 'rgba(255,255,255,0.5)',
                 background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
                 borderLeft: isActive ? `3px solid ${ORANGE}` : '3px solid transparent',
-                transition: 'all 0.15s',
+                transition: 'background 0.15s, padding 0.3s, justify-content 0.3s',
                 position: 'relative',
-                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                justifyContent: isOpen ? 'flex-start' : 'center',
                 whiteSpace: 'nowrap',
+                overflow: 'hidden'
               })}
               onMouseEnter={e => { if (!e.currentTarget.style.background.includes('0.12')) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
               onMouseLeave={e => { if (!e.currentTarget.style.background.includes('0.12')) e.currentTarget.style.background = 'transparent' }}
             >
-              <span style={{ flexShrink: 0 }}>{item.icon}</span>
-              {sidebarOpen && (
-                <>
-                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.82rem', fontWeight: 500, flex: 1 }}>
-                    {item.label}
-                  </span>
-                  {item.badge && (
-                    <span style={{
-                      width: 18, height: 18, borderRadius: '50%',
-                      background: ORANGE, color: 'white',
-                      fontSize: '0.52rem', fontWeight: 700, fontFamily: 'Unbounded, sans-serif',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>{item.badge}</span>
-                  )}
-                </>
-              )}
+              <span style={{ flexShrink: 0, transition: 'transform 0.3s', transform: isOpen ? 'translateX(0)' : 'translateX(0)' }}>{item.icon}</span>
+              <div style={{ 
+                display: 'flex', alignItems: 'center', flex: 1, 
+                opacity: isOpen ? 1 : 0,
+                width: isOpen ? 140 : 0,
+                transition: 'opacity 0.2s, width 0.3s',
+                overflow: 'hidden'
+              }}>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.82rem', fontWeight: 500, flex: 1 }}>
+                  {item.label}
+                </span>
+                {item.badge && (
+                  <span style={{
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: ORANGE, color: 'white',
+                    fontSize: '0.52rem', fontWeight: 700, fontFamily: 'Unbounded, sans-serif',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0
+                  }}>{item.badge}</span>
+                )}
+              </div>
             </NavLink>
           ))}
         </nav>
@@ -136,31 +213,46 @@ export default function DashboardShell() {
         <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
           <div
             onClick={() => setShowUserMenu(v => !v)}
+            title={!isOpen ? "User Profile" : undefined}
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              padding: sidebarOpen ? '10px 12px' : '10px',
+              padding: isOpen ? '10px 12px' : '10px',
               borderRadius: 8, cursor: 'pointer',
               background: showUserMenu ? 'rgba(255,255,255,0.1)' : 'transparent',
-              transition: 'background 0.15s',
-              justifyContent: sidebarOpen ? 'flex-start' : 'center',
+              transition: 'background 0.15s, padding 0.3s, justify-content 0.3s',
+              justifyContent: isOpen ? 'flex-start' : 'center',
+              overflow: 'hidden'
             }}
           >
             <div style={{
               width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-              background: `linear-gradient(135deg, ${TEAL} 0%, #00b89a 100%)`,
+              background: user?.logoUrl ? 'white' : `linear-gradient(135deg, ${TEAL} 0%, #00b89a 100%)`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '0.7rem', color: 'white',
+              overflow: 'hidden', border: user?.logoUrl ? '1px solid rgba(255,255,255,0.2)' : 'none'
             }}>
-              {user?.avatar || 'S'}
+              {user?.logoUrl ? (
+                <img 
+                  src={user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`} 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  alt="PFP" 
+                />
+              ) : (
+                user?.avatar || (user?.restaurantName?.[0] || 'S')
+              )}
             </div>
-            {sidebarOpen && (
-              <div style={{ flex: 1, overflow: 'hidden' }}>
-                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'white', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.restaurantName}</p>
-                <p style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.4)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</p>
-              </div>
-            )}
+            
+            <div style={{ 
+              flex: 1, overflow: 'hidden', 
+              opacity: isOpen ? 1 : 0, 
+              width: isOpen ? 120 : 0,
+              transition: 'opacity 0.2s, width 0.3s'
+            }}>
+              <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'white', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.restaurantName}</p>
+              <p style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.4)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</p>
+            </div>
           </div>
-          {showUserMenu && sidebarOpen && (
+          {showUserMenu && isOpen && (
             <div style={{
               background: 'rgba(255,255,255,0.08)', borderRadius: 8, marginTop: 4, overflow: 'hidden',
             }}>

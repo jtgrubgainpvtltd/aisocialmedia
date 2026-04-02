@@ -6,6 +6,8 @@ import { LANGUAGES, PLATFORMS, TONES } from "../constants/platforms";
 import { useAuth } from "../context/AuthContext";
 import ImageCropperModal from "./ImageCropperModal";
 import { useToast, ToastContainer } from "./Toast";
+import { PreviewInstagramPost, PreviewInstagramStory, PreviewTwitter, PreviewFacebook, PreviewWhatsApp } from "./SocialPreviews";
+
 
 const BACKEND_ORIGIN = (
   import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1"
@@ -21,12 +23,28 @@ const CAMPAIGN_TYPES = [
   "Discount Offer",
   "Menu Highlight",
 ];
-const ASPECT_RATIOS = ["Square (1:1)", "Story (9:16)", "Landscape (16:9)"];
+const FORMAT_OPTIONS = {
+  'Instagram': ['Post', 'Story'],
+  'Facebook': ['Post', 'Story'],
+  'Twitter / X': ['Post'],
+  'WhatsApp Status': ['Status'],
+  'Google Business': ['Post']
+};
+
+const ASPECT_RATIOS = [
+  "Square (1:1)",
+  "Portrait (4:5)",
+  "Landscape (16:9)",
+  "Full Vertical (9:16)"
+];
 
 const sizeMap = {
-  "Square (1:1)": "1024x1024",
-  "Story (9:16)": "1024x1792",
-  "Landscape (16:9)": "1792x1024",
+  'Square (1:1)': '1024x1024',
+  'Portrait (4:5)': '1024x1024',
+  'Landscape (16:9)': '1792x1024',
+  'Full Vertical (9:16)': '1024x1792',
+  'Story': '1024x1792',
+  'Status': '1024x1792',
 };
 
 function SelectField({ label, options, value, onChange }) {
@@ -88,7 +106,24 @@ export default function AIContentStudio() {
 
   // New configuration options
   const [campaignType, setCampaignType] = useState(CAMPAIGN_TYPES[0]);
+  const [format, setFormat] = useState(FORMAT_OPTIONS[platforms[0]][0]);
   const [aspectRatio, setAspectRatio] = useState(ASPECT_RATIOS[0]);
+
+  useEffect(() => {
+    const availableFormats = FORMAT_OPTIONS[platform] || ['Post'];
+    if (!availableFormats.includes(format)) {
+      setFormat(availableFormats[0]);
+    }
+  }, [platform, format]);
+
+  // Sync aspect ratio when format changes
+  useEffect(() => {
+    if (format === 'Story' || format === 'Status') {
+      setAspectRatio("Full Vertical (9:16)");
+    } else if (format === 'Post' && aspectRatio === "Full Vertical (9:16)") {
+      setAspectRatio("Square (1:1)");
+    }
+  }, [format]);
 
   const [prompt, setPrompt] = useState("");
   const [generated, setGenerated] = useState(false);
@@ -114,6 +149,16 @@ export default function AIContentStudio() {
     const urlImageUrl = searchParams.get("imageUrl");
     const urlPlatform = searchParams.get("platform");
     const fromHistory = searchParams.get("fromHistory");
+    let historyPayload = null;
+
+    if (fromHistory === 'true') {
+      try {
+        const raw = sessionStorage.getItem("historyEditPayload");
+        historyPayload = raw ? JSON.parse(raw) : null;
+      } catch {
+        historyPayload = null;
+      }
+    }
 
     if (urlPrompt) {
       setPrompt(decodeURIComponent(urlPrompt));
@@ -121,8 +166,12 @@ export default function AIContentStudio() {
 
     // If coming from History page, pre-fill everything
     if (fromHistory === 'true') {
-      if (urlCaption) {
-        const caption = decodeURIComponent(urlCaption);
+      const resolvedCaption = historyPayload?.caption || (urlCaption ? decodeURIComponent(urlCaption) : "");
+      const resolvedImageUrl = historyPayload?.imageUrl || (urlImageUrl ? decodeURIComponent(urlImageUrl) : "");
+      const resolvedPlatform = historyPayload?.platform || (urlPlatform ? decodeURIComponent(urlPlatform) : "");
+
+      if (resolvedCaption) {
+        const caption = resolvedCaption;
         // Try to split bilingual caption
         const parts = caption.split(/\n{2,}/);
         if (parts.length >= 2) {
@@ -138,16 +187,33 @@ export default function AIContentStudio() {
         setHashtags(foundHashtags);
       }
       
-      if (urlImageUrl) {
-        setImageUrl(decodeURIComponent(urlImageUrl));
+      if (resolvedImageUrl) {
+        // Keep the URL as-is - Vite proxy handles /uploads/ paths
+        setImageUrl(resolvedImageUrl);
       }
       
-      if (urlPlatform) {
-        setPlatform(decodeURIComponent(urlPlatform));
+      if (resolvedPlatform) {
+        // Normalize platform casing: DB has uppercase, UI expects title case
+        const normalizedPlatform = resolvedPlatform.toLowerCase()
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        setPlatform(normalizedPlatform);
       }
       
       setGenerated(true); // Mark as generated so buttons appear
-      toast.success('Post loaded from history! You can edit, crop, or schedule.');
+      
+      // Show toast only once (avoid double-render in dev mode)
+      const toastShown = sessionStorage.getItem('history_toast_shown');
+      if (!toastShown) {
+        toast.success('Post loaded from history! You can edit, crop, or schedule.');
+        sessionStorage.setItem('history_toast_shown', 'true');
+        // Clear flag after navigation
+        setTimeout(() => sessionStorage.removeItem('history_toast_shown'), 1000);
+      }
+
+      // One-time use payload
+      sessionStorage.removeItem("historyEditPayload");
     }
   }, [searchParams]);
 
@@ -212,7 +278,7 @@ export default function AIContentStudio() {
         hashtags: autoHashtags
           ? ["GrubGain", "FoodLovers", "RestaurantLife"]
           : [],
-        imageSize: sizeMap[aspectRatio] || "1024x1024",
+        imageSize: format === 'Post' ? (sizeMap[aspectRatio] || "1024x1024") : (sizeMap[format] || "1024x1792"),
         imageQuality: "high",
         includeCTA: includeCTA,
         addEmojis: addEmojis,
@@ -236,14 +302,20 @@ export default function AIContentStudio() {
 
         // Extract hashtags from caption
         const hashtagRegex = /#\w+/g;
-        const foundHashtags = captionText.match(hashtagRegex) || [];
+        const foundHashtags = (data.data.caption || "").match(hashtagRegex) || [];
         setHashtags(foundHashtags.length > 0 ? foundHashtags : []);
 
         const rawUrl = data.data.imageUrl || "";
-        // Convert /uploads/xxx to http://localhost:5000/uploads/xxx
-        setImageUrl(
-          rawUrl.startsWith("http") ? rawUrl : `${BACKEND_ORIGIN}${rawUrl}`,
-        );
+        
+        // Robust URL joining
+        let finalUrl = rawUrl;
+        if (rawUrl && !rawUrl.startsWith('http')) {
+          const cleanOrigin = BACKEND_ORIGIN.endsWith('/') ? BACKEND_ORIGIN.slice(0, -1) : BACKEND_ORIGIN;
+          const cleanPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+          finalUrl = `${cleanOrigin}${cleanPath}`;
+        }
+        
+        setImageUrl(finalUrl);
         setGenerated(true);
 
         // Ensure History page fetches the newly generated content when visited next
@@ -253,10 +325,17 @@ export default function AIContentStudio() {
       }
     } catch (err) {
       console.error("Generation error:", err);
-      setError(
-        err.response?.data?.message ||
-          "Failed to generate content. Check your API connection.",
-      );
+      
+      let errorMsg = "Failed to generate content. Check your API connection.";
+      if (err.response?.data?.errors && err.response.data.errors.length > 0) {
+        errorMsg = err.response.data.errors[0].msg;
+      } else if (err.response?.data?.error?.message) {
+        errorMsg = err.response.data.error.message;
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      }
+      
+      setError(errorMsg);
     } finally {
       setGenerating(false);
     }
@@ -316,682 +395,251 @@ export default function AIContentStudio() {
       .then(() => toast.success("Caption copied to clipboard!"))
       .catch(() => toast.error("Failed to copy — check clipboard permissions"));
   };
-
   // Calculate aspect ratio for preview container
   const getPreviewAspectRatio = () => {
-    if (aspectRatio === "Story (9:16)") return "9 / 16";
-    if (aspectRatio === "Landscape (16:9)") return "16 / 9";
+    if (format === 'Story' || format === 'Status') return "9 / 16";
+    if (aspectRatio.includes('1:1')) return "1 / 1";
+    if (aspectRatio.includes('4:5')) return "4 / 5";
+    if (aspectRatio.includes('16:9')) return "16 / 9";
     return "1 / 1";
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-8 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-8 items-start p-8">
       {/* ─── Left: Data Inputs ─── */}
       <div
+        className="glass-card"
         style={{
-          background: "rgba(255,255,255,0.7)",
-          backdropFilter: "blur(20px)",
-          borderRadius: 16,
-          border: "1px solid rgba(12,12,12,0.08)",
           padding: 32,
-          boxShadow: "0 2px 20px rgba(0,0,0,0.02)",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <div className="mb-6">
-          <h3
-            className="text-xl font-bold mb-1"
-            style={{ fontFamily: "Unbounded, sans-serif", color: "var(--fg)" }}
-          >
-            Content Configuration
+        <div className="mb-8">
+          <h3 className="text-2xl font-bold mb-2 font-unbounded" style={{ color: "var(--fg)" }}>
+            Content Studio
           </h3>
-          <p
-            className="text-sm opacity-60"
-            style={{ fontFamily: "Inter, sans-serif" }}
-          >
-            Select your parameters and instruct the AI engine to generate your
-            graphic poster and captions.
+          <p className="text-sm opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
+            Design professional marketing posters and captions in seconds.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
-          <SelectField
-            label="Campaign Type"
-            options={CAMPAIGN_TYPES}
-            value={campaignType}
-            onChange={setCampaignType}
-          />
-          <SelectField
-            label="Image Aspect Ratio"
-            options={ASPECT_RATIOS}
-            value={aspectRatio}
-            onChange={setAspectRatio}
-          />
-          <SelectField
-            label="Target Platform"
-            options={platforms}
-            value={platform}
-            onChange={setPlatform}
-          />
-          <SelectField
-            label="Caption Language"
-            options={languages}
-            value={language}
-            onChange={setLanguage}
-          />
-          <SelectField
-            label="Brand Voice Tone"
-            options={tones}
-            value={tone}
-            onChange={setTone}
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+          <SelectField label="Campaign Type" options={CAMPAIGN_TYPES} value={campaignType} onChange={setCampaignType} />
+          <SelectField label="Format" options={FORMAT_OPTIONS[platform] || ['Post']} value={format} onChange={setFormat} />
+          <SelectField label="Target Platform" options={platforms} value={platform} onChange={setPlatform} />
+          <SelectField label="Caption Language" options={languages} value={language} onChange={setLanguage} />
+          <SelectField label="Brand Voice" options={tones} value={tone} onChange={setTone} />
+          {format === 'Post' && (
+            <SelectField label="Aspect Ratio" options={ASPECT_RATIOS.filter(r => r !== "Full Vertical (9:16)")} value={aspectRatio} onChange={setAspectRatio} />
+          )}
         </div>
 
-        {/* Prompt textarea */}
-        <div className="flex flex-col gap-1.5 mb-5">
-          <label
-            className="text-[0.58rem] tracking-[0.14em] uppercase"
-            style={{
-              fontFamily: "Space Mono, monospace",
-              color: "var(--fg-dim)",
-            }}
-          >
-            Custom Context / Offer Details{" "}
-            <span style={{ color: "var(--fg-dimmer)" }}>(optional)</span>
+        <div className="flex flex-col gap-2 mb-8">
+          <label className="text-[0.6rem] tracking-[0.2em] uppercase opacity-40 font-bold font-mono-custom">
+            Custom Context / Offer Details
           </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={
-              campaignType === "Discount Offer"
-                ? "e.g. 'Flat 20% OFF on all group orders exceeding ₹2000...'"
-                : "e.g. 'Generate a beautiful poster for Diwali celebrating lights and food...'"
-            }
+            placeholder="e.g. 'Flat 20% OFF' or 'Diwali greetings with a focus on festive sweets'"
             rows={3}
-            className="w-full resize-none px-4 py-3 rounded-xl text-sm transition-all duration-150"
+            className="w-full resize-none px-5 py-4 rounded-2xl text-sm transition-all outline-none"
             style={{
-              background: "var(--bg-card)",
+              background: "rgba(255,255,255,0.4)",
               border: "1px solid var(--border)",
               color: "var(--fg)",
               fontFamily: "Inter, sans-serif",
-              lineHeight: 1.65,
+              lineHeight: 1.6,
             }}
           />
         </div>
 
-        {/* Settings row */}
-        <div
-          className="flex flex-wrap gap-4 p-4 rounded-xl mb-6"
-          style={{
-            background: "rgba(0,122,100,0.04)",
-            border: "1px solid rgba(0,122,100,0.1)",
-          }}
-        >
+        <div className="flex flex-wrap gap-6 p-5 rounded-2xl mb-8" style={{ background: "var(--teal-muted)", border: "1px solid var(--teal-light)" }}>
           {[
-            {
-              label: "Include Call-To-Action",
-              checked: includeCTA,
-              onChange: setIncludeCTA,
-            },
-            { label: "Add Emojis", checked: addEmojis, onChange: setAddEmojis },
-            {
-              label: "Auto Hashtags",
-              checked: autoHashtags,
-              onChange: setAutoHashtags,
-            },
+            { label: "Add CTA", checked: includeCTA, onChange: setIncludeCTA },
+            { label: "Emojis", checked: addEmojis, onChange: setAddEmojis },
+            { label: "Hashtags", checked: autoHashtags, onChange: setAutoHashtags },
           ].map((opt) => (
-            <label
-              key={opt.label}
-              className="flex items-center gap-2 cursor-pointer"
-            >
+            <label key={opt.label} className="flex items-center gap-3 cursor-pointer group">
               <input
                 type="checkbox"
                 checked={opt.checked}
                 onChange={() => opt.onChange((v) => !v)}
-                className="accent-teal-600 cursor-pointer w-4 h-4"
+                className="accent-teal-600 w-4 h-4 cursor-pointer"
               />
-              <span
-                className="text-[0.65rem] tracking-wide"
-                style={{
-                  fontFamily: "Inter, sans-serif",
-                  color: "#1a2332",
-                  fontWeight: 600,
-                }}
-              >
+              <span className="text-xs font-semibold opacity-70 group-hover:opacity-100 transition-opacity" style={{ color: "var(--fg)", fontFamily: "Inter, sans-serif" }}>
                 {opt.label}
               </span>
             </label>
           ))}
         </div>
 
-        {/* Error */}
         {error && (
-          <div
-            className="flex items-center gap-2 p-3 rounded-xl mb-6"
-            style={{
-              background: "rgba(220,38,38,0.08)",
-              border: "1px solid rgba(220,38,38,0.2)",
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              style={{ color: "#dc2626", flexShrink: 0 }}
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="15" y1="9" x2="9" y2="15" />
-              <line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
-            <span
-              style={{
-                fontFamily: "Inter, sans-serif",
-                fontSize: "0.75rem",
-                color: "#dc2626",
-                fontWeight: 500,
-              }}
-            >
-              {error}
-            </span>
+          <div className="flex items-center gap-3 p-4 rounded-xl mb-8" style={{ background: "rgba(220,38,38,0.05)", border: "1px solid rgba(220,38,38,0.1)" }}>
+            <span className="text-red-600 text-xs font-medium">{error}</span>
           </div>
         )}
 
-        {/* Generate button */}
         <button
           onClick={handleGenerate}
           disabled={generating}
-          className="w-full py-4 rounded-xl font-bold text-white tracking-widest uppercase transition-all duration-200 cursor-pointer flex items-center justify-center gap-3"
+          className="w-full py-5 rounded-2xl font-bold text-white tracking-widest uppercase transition-all flex items-center justify-center gap-3 active:scale-[0.98] font-unbounded"
           style={{
-            fontFamily: "Unbounded, sans-serif",
-            fontSize: "0.7rem",
-            background: generating
-              ? "rgba(0,122,100,0.6)"
-              : "linear-gradient(135deg, var(--teal) 0%, #00a486 100%)",
-            boxShadow: generating ? "none" : "0 4px 20px rgba(0,122,100,0.3)",
+            fontSize: "0.75rem",
+            background: generating ? "rgba(0,122,100,0.4)" : "linear-gradient(135deg, var(--teal) 0%, #00a486 100%)",
+            boxShadow: generating ? "none" : "0 10px 30px rgba(0,122,100,0.2)",
             border: "none",
+            cursor: generating ? "wait" : "pointer"
           }}
         >
           {generating ? (
             <>
-              <svg
-                className="animate-spin"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-              </svg>
-              Generating AI Graphic...
+              <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+              Thinking...
             </>
-          ) : (
-            <>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              >
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
-              Generate Poster & Text
-            </>
-          )}
+          ) : "Generate Content"}
         </button>
       </div>
 
       {/* ─── Right: Dynamic Preview ─── */}
       <div
+        className="glass-card"
         style={{
-          background: "#1a2332",
-          borderRadius: 16,
           overflow: "hidden",
-          boxShadow: "0 10px 30px rgba(26,35,50,0.3)",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        {/* Dynamic Image Area */}
-        <div
-          style={{
-            width: "100%",
-            aspectRatio: getPreviewAspectRatio(),
-            background: generating ? "rgba(255,255,255,0.05)" : "#0f141d",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          {generating ? (
-            <div className="flex flex-col items-center gap-4 p-8 text-center animate-pulse">
-              <svg
-                width="40"
-                height="40"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="rgba(255,255,255,0.4)"
-                strokeWidth="1.5"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
-              <div
-                style={{
-                  fontFamily: "Inter, sans-serif",
-                  color: "rgba(255,255,255,0.6)",
-                  fontSize: "0.8rem",
-                  lineHeight: 1.5,
-                }}
-              >
-                Designing your {aspectRatio} promotional graphic based on your
-                brand context...
-              </div>
-            </div>
-          ) : generated && imageUrl ? (
-            <img
-              src={imageUrl}
-              alt="AI Generated Poster"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        {/* Preview Container */}
+        <div style={{ padding: 40, background: "rgba(0,0,0,0.03)", display: "flex", justifyContent: "center", alignItems: "center", minHeight: 400 }}>
+          {platform === 'Instagram' && format === 'Post' && (
+            <PreviewInstagramPost 
+              imageUrl={generated ? imageUrl : ''} 
+              captionEn={captionEn} 
+              captionHi={captionHi} 
+              restaurantName={user?.restaurantName || user?.name} 
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
+              generating={generating} 
+              language={language}
+              aspectRatio={getPreviewAspectRatio()}
             />
-          ) : (
-            <div className="flex flex-col items-center gap-4 p-8 text-center opacity-40">
-              <svg
-                width="32"
-                height="32"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth="1.5"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
-              <span
-                style={{
-                  fontFamily: "Space Mono, monospace",
-                  fontSize: "0.65rem",
-                  color: "white",
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Preview Area
-              </span>
-            </div>
           )}
-
-          {/* Action Overlay */}
-          {generated && imageUrl && !showScheduler && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: 16,
-                right: 16,
-                display: "flex",
-                gap: 12,
-              }}
-            >
-              <button
-                onClick={() => setShowCropModal(true)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 16px",
-                  background: "rgba(255,255,255,0.1)",
-                  borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,0.3)",
-                  cursor: "pointer",
-                  color: "white",
-                  fontFamily: "Unbounded, sans-serif",
-                  fontWeight: 700,
-                  fontSize: "0.55rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                  transition: "all 0.15s",
-                }}
-              >
-                ✂️ Crop
-              </button>
-
-              <button
-                onClick={() => setShowScheduler(true)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 16px",
-                  background: "var(--teal)",
-                  borderRadius: 8,
-                  border: "none",
-                  cursor: "pointer",
-                  color: "white",
-                  fontFamily: "Unbounded, sans-serif",
-                  fontWeight: 700,
-                  fontSize: "0.55rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                  transition: "all 0.15s",
-                }}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                Schedule Post
-              </button>
-
-              <button
-                onClick={handlePublishNow}
-                disabled={publishing}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 16px",
-                  background: publishing ? "rgba(232,100,10,0.75)" : "#E8640A",
-                  borderRadius: 8,
-                  border: "none",
-                  cursor: "pointer",
-                  color: "white",
-                  fontFamily: "Unbounded, sans-serif",
-                  fontWeight: 700,
-                  fontSize: "0.55rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                  transition: "all 0.15s",
-                }}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-                {publishing ? "Publishing..." : "Publish Now"}
-              </button>
-
-              <a
-                href={imageUrl}
-                download={`RestaurantPromo-${Date.now()}.png`}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 16px",
-                  background: "rgba(255,255,255,0.95)",
-                  borderRadius: 8,
-                  color: "#1a2332",
-                  textDecoration: "none",
-                  fontFamily: "Unbounded, sans-serif",
-                  fontWeight: 700,
-                  fontSize: "0.55rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                  transition: "all 0.15s",
-                }}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                Download
-              </a>
-            </div>
+          {platform === 'Instagram' && format === 'Story' && (
+            <PreviewInstagramStory 
+              imageUrl={generated ? imageUrl : ''} 
+              restaurantName={user?.restaurantName || user?.name} 
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
+              generating={generating} 
+            />
           )}
-
-          {/* Scheduler Form Overlay */}
-          {showScheduler && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                right: 0,
-                background: "rgba(0,0,0,0.7)",
-                backdropFilter: "blur(8px)",
-                padding: 24,
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <h4
-                  style={{
-                    color: "white",
-                    fontFamily: "Unbounded, sans-serif",
-                    fontSize: "1rem",
-                    margin: 0,
-                  }}
-                >
-                  Schedule Post
-                </h4>
-                <button
-                  onClick={() => setShowScheduler(false)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-              <div style={{ display: "flex", gap: 12 }}>
-                <input
-                  type="date"
-                  value={scheduleDate}
-                  onChange={(e) => setScheduleDate(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: 12,
-                    borderRadius: 8,
-                    border: "none",
-                    fontFamily: "Inter, sans-serif",
-                  }}
-                  required
-                />
-                <input
-                  type="time"
-                  value={scheduleTime}
-                  onChange={(e) => setScheduleTime(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: 12,
-                    borderRadius: 8,
-                    border: "none",
-                    fontFamily: "Inter, sans-serif",
-                  }}
-                  required
-                />
-              </div>
-
-              {bestTimes.length > 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "0.65rem",
-                      color: "rgba(255,255,255,0.7)",
-                      fontFamily: "Inter, sans-serif",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    ✨ AI Picks:
-                  </span>
-                  {bestTimes.map((time) => (
-                    <button
-                      key={time}
-                      onClick={() => setScheduleTime(time)}
-                      style={{
-                        padding: "4px 8px",
-                        borderRadius: 4,
-                        border:
-                          scheduleTime === time
-                            ? "1px solid var(--teal)"
-                            : "1px solid rgba(255,255,255,0.2)",
-                        background:
-                          scheduleTime === time ? "var(--teal)" : "transparent",
-                        color: "white",
-                        fontFamily: "Space Mono, monospace",
-                        fontSize: "0.65rem",
-                        cursor: "pointer",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      {time}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button
-                onClick={handleSchedule}
-                disabled={scheduling}
-                style={{
-                  padding: "12px",
-                  background: "var(--teal)",
-                  color: "white",
-                  borderRadius: 8,
-                  border: "none",
-                  fontFamily: "Unbounded, sans-serif",
-                  fontSize: "0.7rem",
-                  textTransform: "uppercase",
-                  cursor: scheduling ? "not-allowed" : "pointer",
-                }}
-              >
-                {scheduling ? "Scheduling..." : "Confirm Schedule"}
-              </button>
-            </div>
+          {platform === 'Twitter / X' && (
+            <PreviewTwitter 
+              imageUrl={generated ? imageUrl : ''} 
+              captionEn={captionEn} 
+              captionHi={captionHi} 
+              restaurantName={user?.restaurantName || user?.name} 
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
+              generating={generating} 
+              language={language}
+              aspectRatio={getPreviewAspectRatio()}
+            />
+          )}
+          {(platform === 'Facebook' || platform === 'Google Business') && (
+            <PreviewFacebook 
+              imageUrl={generated ? imageUrl : ''} 
+              captionEn={captionEn} 
+              captionHi={captionHi} 
+              restaurantName={user?.restaurantName || user?.name} 
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
+              generating={generating} 
+              language={language}
+              aspectRatio={getPreviewAspectRatio()}
+            />
+          )}
+          {platform === 'WhatsApp Status' && (
+            <PreviewWhatsApp 
+              imageUrl={generated ? imageUrl : ''} 
+              captionEn={captionEn} 
+              captionHi={captionHi} 
+              generating={generating} 
+            />
           )}
         </div>
 
-        {/* Text Preview Area */}
-        <div
-          style={{ padding: 24, borderTop: "1px solid rgba(255,255,255,0.08)" }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <span
-              className="text-[0.6rem] tracking-[0.15em] uppercase"
-              style={{
-                fontFamily: "Space Mono, monospace",
-                color: "rgba(255,255,255,0.4)",
-              }}
-            >
-              Generated Copy
-            </span>
+        {/* Actions Row */}
+        {generated && imageUrl && (
+          <div style={{ padding: "16px 24px", background: "rgba(255,255,255,0.4)", borderTop: "1px solid var(--border)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <button onClick={() => setShowCropModal(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-[0.6rem] font-bold uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm font-unbounded">
+              ✂️ Crop
+            </button>
+            <button onClick={() => setShowScheduler(!showScheduler)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--teal)] text-white text-[0.6rem] font-bold uppercase tracking-wider hover:brightness-110 transition-all shadow-sm font-unbounded">
+              📅 {showScheduler ? 'Cancel' : 'Schedule'}
+            </button>
+            <button onClick={handlePublishNow} disabled={publishing} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#E8640A] text-white text-[0.6rem] font-bold uppercase tracking-wider hover:brightness-110 disabled:opacity-50 transition-all shadow-sm font-unbounded">
+              🚀 {publishing ? 'Publishing...' : 'Publish Now'}
+            </button>
+            <a href={imageUrl} download className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-black text-[0.6rem] font-bold uppercase tracking-wider hover:bg-gray-50 transition-all shadow-sm font-unbounded">
+              ⬇️ Download
+            </a>
+          </div>
+        )}
+
+        {/* Inline Scheduler */}
+        {showScheduler && (
+          <div style={{ padding: 24, background: "rgba(0,0,0,0.02)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 16 }}>
+            <h4 style={{ color: "var(--fg)", fontSize: "0.9rem", margin: 0, fontWeight: 700 }}>Choose Time</h4>
+            <div className="flex gap-4">
+              <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} className="flex-1 px-4 py-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm outline-none focus:border-[var(--teal)]" />
+              <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="flex-1 px-4 py-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm outline-none focus:border-[var(--teal)]" />
+            </div>
+            {bestTimes.length > 0 && (
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-[0.6rem] uppercase opacity-40 font-bold mr-2 font-mono-custom">✨ AI Suggests:</span>
+                {bestTimes.map(t => (
+                  <button key={t} onClick={() => setScheduleTime(t)} className={`px-3 py-1.5 rounded-lg text-[0.65rem] font-mono border transition-all ${scheduleTime === t ? 'bg-[var(--teal)] border-transparent text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-[var(--teal)]'}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
             <button
-              onClick={handleCopy}
-              disabled={!generated}
-              className="text-[0.55rem] tracking-wider uppercase px-2.5 py-1.5 rounded-lg transition-all font-bold"
-              style={{
-                fontFamily: "Space Mono, monospace",
-                color: generated ? "var(--teal)" : "rgba(255,255,255,0.2)",
-                background: generated ? "rgba(0,122,100,0.1)" : "transparent",
-                border: "none",
-                cursor: generated ? "pointer" : "default",
-              }}
+               onClick={handleSchedule}
+               disabled={scheduling}
+               className="w-full py-3.5 rounded-xl bg-[var(--teal)] text-white font-bold text-xs uppercase tracking-widest hover:brightness-110 disabled:opacity-50 transition-all shadow-md font-unbounded"
             >
-              Copy Text
+              {scheduling ? 'Scheduling...' : 'Confirm Schedule'}
             </button>
           </div>
+        )}
 
-          <div
-            style={{
-              color: "white",
-              fontFamily: "Inter, sans-serif",
-              fontSize: "0.82rem",
-              lineHeight: 1.6,
-            }}
-          >
-            {captionEn ? (
-              <p className="mb-3">{captionEn}</p>
+        {/* Text Area */}
+        <div style={{ padding: 24, borderTop: "1px solid var(--border)", flex: 1 }}>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-[0.6rem] uppercase opacity-40 font-bold tracking-[0.2em] font-mono-custom">Generated Copy</span>
+            <button onClick={handleCopy} disabled={!generated} className="text-[0.6rem] font-bold text-[var(--teal)] uppercase tracking-wider disabled:opacity-20 font-unbounded">Copy Text</button>
+          </div>
+          <div style={{ color: "var(--fg)", fontSize: "0.85rem", lineHeight: 1.6, fontFamily: "Inter, sans-serif" }}>
+            {(!captionEn && !captionHi) ? (
+              <p className="opacity-40 italic">No {language} caption generated...</p>
             ) : (
-              <p className="opacity-40 italic">
-                English caption will appear here...
-              </p>
+              <>
+                {captionEn && <p className="mb-4">{captionEn}</p>}
+                {captionHi && <p className="mb-4 opacity-80">{captionHi}</p>}
+              </>
             )}
-
-            {captionHi && <p className="mb-3 opacity-90">{captionHi}</p>}
-
             {hashtags.length > 0 && (
-              <p className="mt-4 flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2 mt-4">
                 {hashtags.map((h, i) => (
-                  <span key={i} style={{ color: "var(--teal)" }}>
-                    {h.startsWith("#") ? h : `#${h}`}
-                  </span>
+                  <span key={i} className="text-[var(--teal)] font-medium">#{h.replace(/^#/, '')}</span>
                 ))}
-              </p>
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Cropper Modal */}
-      <ImageCropperModal
-        open={showCropModal}
-        imageSrc={imageUrl}
-        onClose={() => setShowCropModal(false)}
-        onCropCompleteCallback={(croppedBlobUrl) => {
-          setImageUrl(croppedBlobUrl);
-        }}
-      />
+      <ImageCropperModal open={showCropModal} imageSrc={imageUrl} onClose={() => setShowCropModal(false)} onCropCompleteCallback={setImageUrl} />
       <ToastContainer toasts={toasts} />
     </div>
   );
