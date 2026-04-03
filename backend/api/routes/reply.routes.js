@@ -4,13 +4,17 @@ import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Protected dashboard routes
+const captureRawBody = express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  }
+});
+
 router.get('/', authenticate, getReplies);
 router.post('/:id/approve', authenticate, approveReply);
 router.post('/:id/reject', authenticate, rejectReply);
 
-// Meta webhook route (must be unprotected, Meta is calling this)
 router.get('/webhook', handleMetaWebhook);
-router.post('/webhook', handleMetaWebhook);
+router.post('/webhook', captureRawBody, handleMetaWebhook);
 
 export default router;

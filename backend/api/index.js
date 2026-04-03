@@ -6,6 +6,8 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
+import { verifyRefreshToken } from "./utils/jwt.js";
+import prisma from "../prisma/client.js";
 
 // Import routes
 import authRoutes from "./routes/auth.routes.js";
@@ -26,11 +28,16 @@ import { logger } from "./utils/logger.js";
 dotenv.config();
 
 const app = express();
+const shouldLogRequests = process.env.REQUEST_LOGGING
+  ? process.env.REQUEST_LOGGING === "true"
+  : process.env.NODE_ENV === "production";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsPath = path.resolve(__dirname, "../public/uploads");
 
-app.set("trust proxy", 1);
+if (process.env.TRUST_PROXY === "true") {
+  app.set("trust proxy", 1);
+}
 
 // ==================== Security Headers ====================
 app.use(
@@ -40,7 +47,13 @@ app.use(
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "https:", "http:"],
+        imgSrc: [
+          "'self'",
+          "data:",
+          "blob:",
+          "http://localhost:5000",
+          "https://res.cloudinary.com",
+        ],
         scriptSrc: ["'self'"],
         connectSrc: [
           "'self'",
@@ -49,12 +62,23 @@ app.use(
       },
     },
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
 
 // ==================== CORS Configuration ====================
+const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 const corsOptions = {
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: (origin, callback) => {
+    // Allow non-browser tools (curl/postman) and same-origin requests without Origin.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("CORS: Origin not allowed"));
+  },
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -63,24 +87,62 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// ==================== Body Parsers ====================
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "50kb" }));
+app.use(express.urlencoded({ extended: true, limit: "50kb" }));
 app.use(cookieParser());
 
-// Serve static uploads with CORS headers
+const protectGeneratedUploads = async (req, res, next) => {
+  const fileName = req.path.split("/").pop() || "";
+  if (!fileName.startsWith("generated_")) {
+    return next();
+  }
+
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        error: { message: "Authentication required to access generated images" },
+      });
+    }
+
+    const decoded = verifyRefreshToken(refreshToken);
+    const tokenRecord = await prisma.refreshToken.findFirst({
+      where: { token: refreshToken, user_id: decoded.userId },
+      select: { id: true, expires_at: true },
+    });
+
+    if (!tokenRecord || tokenRecord.expires_at < new Date()) {
+      return res.status(401).json({
+        success: false,
+        error: { message: "Invalid session for generated image access" },
+      });
+    }
+
+    next();
+  } catch {
+    return res.status(401).json({
+      success: false,
+      error: { message: "Invalid session for generated image access" },
+    });
+  }
+};
+
 app.use(
   "/uploads",
-  cors(corsOptions), // Add CORS to static files
+  protectGeneratedUploads,
+  cors(corsOptions),
   express.static(uploadsPath, {
     maxAge: "7d",
     etag: true,
+    setHeaders: (res) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    },
   }),
 );
 
-// ==================== Rate Limiting ====================
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true,
@@ -91,10 +153,12 @@ app.use("/api/", limiter);
 
 // ==================== Request Logging ====================
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.get("user-agent"),
-  });
+  if (shouldLogRequests) {
+    logger.info(`${req.method} ${req.path}`, {
+      ip: req.ip,
+      userAgent: req.get("user-agent"),
+    });
+  }
   next();
 });
 
@@ -103,8 +167,6 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || "development",
   });
 });
 

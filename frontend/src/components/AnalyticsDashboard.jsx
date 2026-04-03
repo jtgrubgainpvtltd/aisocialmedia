@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { content, analytics } from '../api/client'
+import QueryState from './ui/QueryState'
 
 const TEAL = '#007A64'
 
@@ -40,7 +42,7 @@ function MetricCard({ metric, delay }) {
   )
 }
 
-function RecentContentCard({ items }) {
+function RecentContentCard({ items, onView }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(12,12,12,0.1)', borderRadius: 12, padding: '20px 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -70,9 +72,25 @@ function RecentContentCard({ items }) {
                 {item.meta}
               </span>
             </div>
-            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', color: TEAL, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, border: `1px solid rgba(0,122,100,0.3)`, flexShrink: 0, cursor: 'pointer' }}>
+            <button
+              type="button"
+              onClick={() => onView(item)}
+              style={{
+                fontFamily: 'Space Mono, monospace',
+                fontSize: '0.58rem',
+                color: TEAL,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: '1px solid rgba(0,122,100,0.3)',
+                background: 'transparent',
+                flexShrink: 0,
+                cursor: 'pointer',
+              }}
+            >
               View
-            </span>
+            </button>
           </div>
         ))}
       </div>
@@ -81,19 +99,61 @@ function RecentContentCard({ items }) {
   )
 }
 
+function WowHero({ stats, overview }) {
+  const score = Math.min(
+    100,
+    Math.round((Number(overview.totalEngagement || 0) / Math.max(1, Number(overview.totalReach || 1))) * 1000)
+  )
+
+  return (
+    <div style={{
+      position: 'relative',
+      overflow: 'hidden',
+      borderRadius: 14,
+      padding: '22px 24px',
+      background: 'linear-gradient(120deg, #1a2332 0%, #22344b 55%, #007A64 100%)',
+      color: 'white',
+      boxShadow: '0 10px 28px rgba(26,35,50,0.22)',
+    }}>
+      <div style={{ position: 'absolute', right: -40, top: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
+      <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.14em', textTransform: 'uppercase', opacity: 0.75 }}>
+            Momentum Signal
+          </span>
+          <h3 style={{ marginTop: 8, fontFamily: 'Unbounded, sans-serif', fontSize: '1.2rem', lineHeight: 1.2 }}>
+            You generated {stats.generated || 0} assets and published {stats.published || 0} posts.
+          </h3>
+          <p style={{ marginTop: 8, opacity: 0.82, fontSize: '0.82rem' }}>
+            Keep cadence steady this week to compound reach and engagement.
+          </p>
+        </div>
+        <div style={{ minWidth: 160 }}>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.62rem', opacity: 0.8, marginBottom: 8 }}>Health Score</div>
+          <div style={{ fontFamily: 'Unbounded, sans-serif', fontSize: '2rem', lineHeight: 1 }}>{score}</div>
+          <div style={{ marginTop: 10, height: 6, background: 'rgba(255,255,255,0.2)', borderRadius: 99 }}>
+            <div style={{ height: '100%', width: `${score}%`, background: '#E8640A', borderRadius: 99, transition: 'width 0.7s' }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AnalyticsDashboard() {
+  const navigate = useNavigate()
   // ── React Query: replaces useState + useEffect + manual loading/error ──
-  const { data: statsData, isLoading: statsLoading } = useQuery({
+  const { data: statsData, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['content-stats'],
     queryFn: () => content.getStats().then(r => r.data.data),
   })
 
-  const { data: historyData, isLoading: historyLoading } = useQuery({
+  const { data: historyData, isLoading: historyLoading, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['content-history-recent'],
     queryFn: () => content.getHistory({ limit: 5 }).then(r => r.data.data),
   })
 
-  const { data: overviewData } = useQuery({
+  const { data: overviewData, error: overviewError, refetch: refetchOverview } = useQuery({
     queryKey: ['analytics-overview'],
     queryFn: () => analytics.getOverview().then(r => r.data.data),
   })
@@ -104,9 +164,26 @@ export default function AnalyticsDashboard() {
   const overview = overviewData || { totalReach: 0, totalEngagement: 0 }
 
   const recentContent = (historyData?.content || []).map(c => ({
+    id: String(c.id),
     title: (c.caption_english || '').substring(0, 50) + ((c.caption_english || '').length > 50 ? '...' : ''),
-    meta: `Generated ${new Date(c.created_on).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} · GPT-4o-mini`
+    fullCaption: c.caption_english || c.caption_hindi || '',
+    imageUrl: c.image_url || '',
+    platform: c.platform || 'INSTAGRAM',
+    meta: `Generated ${new Date(c.created_on).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}`
   }))
+
+  const handleViewPost = (post) => {
+    navigate('/dashboard/studio', {
+      state: {
+        historyEditPayload: {
+          caption: post.fullCaption || '',
+          imageUrl: post.imageUrl || '',
+          platform: post.platform || 'INSTAGRAM',
+          postId: String(post.id),
+        },
+      },
+    })
+  }
 
   const metrics = [
     {
@@ -132,7 +209,20 @@ export default function AnalyticsDashboard() {
   ]
 
   return (
+    <QueryState
+      loading={loading}
+      error={statsError || historyError || overviewError}
+      onRetry={() => {
+        refetchStats()
+        refetchHistory()
+        refetchOverview()
+      }}
+      loadingTitle="Loading analytics"
+      loadingSubtitle="Crunching performance metrics…"
+    >
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <WowHero stats={stats} overview={overview} />
+
       {/* Metric Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
         {metrics.map((metric, i) => (
@@ -141,7 +231,7 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* Chart + Recent Content */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(320px, 1fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(12,12,12,0.1)', borderRadius: 12, padding: '20px 24px' }}>
           <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.5)', display: 'block', marginBottom: 16 }}>
             Content Generation Activity
@@ -164,9 +254,33 @@ export default function AnalyticsDashboard() {
             <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', color: 'rgba(12,12,12,0.3)' }}>2 weeks ago</span>
             <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', color: 'rgba(12,12,12,0.3)' }}>Today</span>
           </div>
+
+          <div style={{ marginTop: 16, borderTop: '1px solid rgba(12,12,12,0.08)', paddingTop: 14 }}>
+            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.45)', display: 'block', marginBottom: 10 }}>
+              Recent Momentum
+            </span>
+            {recentContent.length === 0 ? (
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.78rem', color: 'rgba(12,12,12,0.45)' }}>
+                Publish a few posts to unlock timeline momentum here.
+              </p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {recentContent.slice(0, 4).map((item, idx) => (
+                  <div key={`${item.title}-${idx}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', minWidth: 0 }}>
+                    <span style={{ marginTop: 4, width: 7, height: 7, borderRadius: '50%', background: TEAL, boxShadow: '0 0 0 4px rgba(0,122,100,0.12)', flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.74rem', color: '#1a2332', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</div>
+                      <div style={{ fontSize: '0.62rem', color: 'rgba(12,12,12,0.45)', marginTop: 2 }}>{item.meta}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        <RecentContentCard items={recentContent} />
+        <RecentContentCard items={recentContent} onView={handleViewPost} />
       </div>
     </div>
+    </QueryState>
   )
 }

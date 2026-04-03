@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { Link } from 'react-router-dom'
 import { trends } from '../../api/client' // Ensure your backend routes this to getRestaurantCityFeed
+import AppLoader from '../../components/ui/AppLoader'
 
 const TEAL = '#007A64'
 const NAVY = '#1a2332'
@@ -38,7 +39,7 @@ export default function CityFeed() {
   const { user } = useAuth()
   
   // Dynamic Initial City
-  const initialCity = user?.city || user?.restaurant?.city || 'Mumbai'
+  const initialCity = user?.city || user?.restaurant?.city || SUPPORTED_CITIES[0]
   
   const [selectedCity, setSelectedCity] = useState(initialCity)
   const [activeTab, setActiveTab] = useState('All')
@@ -130,8 +131,12 @@ export default function CityFeed() {
       </div>
 
       {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'Inter, sans-serif', color: 'rgba(12,12,12,0.5)' }}>
-          Fetching real-time hyper-local data for {selectedCity}...
+        <div style={{ padding: '8px 0 14px' }}>
+          <AppLoader
+            fullscreen={false}
+            title={`Loading ${selectedCity} feed`}
+            subtitle="Fetching real-time hyper-local signals and trends…"
+          />
         </div>
       ) : (
         /* Feed cards */

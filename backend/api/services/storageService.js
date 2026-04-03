@@ -7,7 +7,6 @@ import { logger } from '../utils/logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// backend/api/services/ -> backend/
 const backendRoot = path.resolve(__dirname, '../..');
 const uploadsRoot = path.join(backendRoot, 'public', 'uploads');
 
@@ -27,21 +26,33 @@ function safeExtFromMime(mime = '') {
 
 export async function uploadImage(buffer, folder = 'brand-assets', options = {}) {
   try {
-    const subFolder = folder.replace(/\\/g, '/').replace(/\.\./g, '');
-    const targetDir = path.join(uploadsRoot, subFolder);
+    const normalizedFolder = folder.replace(/\\/g, '/').replace(/\.\./g, '');
+    const targetDir = path.resolve(uploadsRoot, normalizedFolder);
+    
+    if (!targetDir.startsWith(uploadsRoot + path.sep) && targetDir !== uploadsRoot) {
+      logger.error('Path traversal attempt detected', { folder, targetDir, uploadsRoot });
+      throw new Error('Invalid upload path');
+    }
+    
     ensureDir(targetDir);
 
     const ext = safeExtFromMime(options.mimetype || '');
     const fileName = `${Date.now()}-${randomUUID()}${ext}`;
     const absolutePath = path.join(targetDir, fileName);
+    
+    if (!absolutePath.startsWith(uploadsRoot + path.sep)) {
+      logger.error('Path traversal attempt in filename', { fileName, absolutePath });
+      throw new Error('Invalid file path');
+    }
+    
     await fs.promises.writeFile(absolutePath, buffer);
 
-    const publicPath = `/uploads/${subFolder}/${fileName}`.replace(/\\/g, '/');
+    const publicPath = `/uploads/${normalizedFolder}/${fileName}`.replace(/\\/g, '/');
 
     return {
       url: publicPath,
       secure_url: publicPath,
-      public_id: `${subFolder}/${fileName}`,
+      public_id: `${normalizedFolder}/${fileName}`,
       size: buffer.length
     };
   } catch (error) {

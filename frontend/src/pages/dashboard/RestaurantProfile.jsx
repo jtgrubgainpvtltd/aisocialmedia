@@ -1,62 +1,28 @@
 import { useState, useEffect } from 'react'
 import { restaurant } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
+import {
+  inputStyle,
+  EMPTY_FORM,
+  mapRestaurantToForm,
+  getLogoUrl,
+  DetailItem,
+  FormField,
+} from './RestaurantProfile.helpers'
 
 const TEAL = '#007A64'
 const NAVY = '#1a2332'
 
-const inputStyle = {
-  width: '100%', padding: '10px 14px',
-  border: '1px solid rgba(12,12,12,0.15)',
-  borderRadius: 8, fontSize: '0.82rem',
-  fontFamily: 'Inter, sans-serif',
-  color: NAVY, background: 'white',
-  outline: 'none', transition: 'border-color 0.15s',
-  boxSizing: 'border-box',
-}
-const labelStyle = {
-  display: 'block', marginBottom: 6,
-  fontSize: '0.7rem', fontWeight: 600, color: NAVY,
-  fontFamily: 'Inter, sans-serif',
-}
-
-const FormField = ({ label, children }) => (
-  <div style={{ display: 'flex', flexDirection: 'column' }}>
-    <label style={labelStyle}>{label}</label>
-    {children}
-  </div>
-)
-
 export default function RestaurantProfile() {
   const { user } = useAuth()
-  const [form, setForm] = useState({
-    name: '', city: '', area: '',
-    cuisine: '', audience: '',
-    tone: '', language: '',
-    about: '',
-    signatureDishes: '',
-    offers: '',
-    hashtags: '',
-    phoneNumber: '',
-    contactEmail: '',
-    website: '',
-    googleMapsUrl: '',
-    fullAddress: '',
-    ownerName: '',
-    priceRange: '',
-    avgOrderValue: '',
-    gstNumber: '',
-    fssaiLicense: '',
-    instagramHandle: '',
-    facebookPage: '',
-    twitterHandle: '',
-    tagline: '',
-    brandColor: '#E8640A',
-    brandStory: '',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [profile, setProfile] = useState(null)
+  const [brandAssets, setBrandAssets] = useState([])
+  const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState({ type: '', text: '' })
+  const [activeTab, setActiveTab] = useState('basic')
 
   // Load restaurant profile on mount
   useEffect(() => {
@@ -68,44 +34,20 @@ export default function RestaurantProfile() {
       const { data } = await restaurant.get()
       if (data.success && data.data) {
         const r = data.data
-        setForm({
-          name: r.restaurant_name || r.name || '',
-          city: r.city || '',
-          area: r.area || '',
-          cuisine: r.cuisine_type || '',
-          audience: r.target_audience || '',
-          tone: r.brand_tone || '',
-          language: r.language_preference || 'BILINGUAL',
-          about: r.about_description || '',
-          signatureDishes: r.signature_dishes || '',
-          offers: r.standard_offers || '',
-          hashtags: r.hashtags || '',
-          phoneNumber: r.phone_number || '',
-          contactEmail: r.contact_email || '',
-          website: r.website || '',
-          googleMapsUrl: r.google_maps_url || '',
-          fullAddress: r.full_address || '',
-          ownerName: r.owner_name || '',
-          priceRange: r.price_range || '',
-          avgOrderValue: r.avg_order_value || '',
-          gstNumber: r.gst_number || '',
-          fssaiLicense: r.fssai_license || '',
-          instagramHandle: r.instagram_handle || '',
-          facebookPage: r.facebook_page || '',
-          twitterHandle: r.twitter_handle || '',
-          tagline: r.tagline || '',
-          brandColor: r.brand_color || '#E8640A',
-          brandStory: r.brand_story || '',
-        })
+        setProfile(r)
+        setBrandAssets(r.brandAssets || [])
+        setForm(mapRestaurantToForm(r))
       }
     } catch (err) {
       // If 404, use defaults from user context
       if (user) {
-        setForm(f => ({
-          ...f,
+        const fallback = {
+          ...EMPTY_FORM,
           name: user.restaurantName || '',
           city: user.city || '',
-        }))
+        }
+        setProfile(null)
+        setForm(fallback)
       }
     } finally {
       setLoading(false)
@@ -119,7 +61,7 @@ export default function RestaurantProfile() {
     setMessage({ type: '', text: '' })
 
     try {
-      await restaurant.update({
+      const { data } = await restaurant.update({
         name: form.name,
         city: form.city,
         area: form.area,
@@ -148,6 +90,11 @@ export default function RestaurantProfile() {
         brand_color: form.brandColor,
         brand_story: form.brandStory,
       })
+      if (data?.data) {
+        setProfile(prev => ({ ...(prev || {}), ...data.data }))
+        setForm(mapRestaurantToForm(data.data))
+      }
+      setIsEditing(false)
       setMessage({ type: 'success', text: '✅ Profile saved successfully!' })
     } catch (err) {
       setMessage({ type: 'error', text: err.response?.data?.error?.message || 'Failed to save profile' })
@@ -168,6 +115,7 @@ export default function RestaurantProfile() {
     try {
       await restaurant.uploadAsset(formData)
       setMessage({ type: 'success', text: '✅ Logo uploaded successfully!' })
+      await loadProfile()
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to upload logo' })
     }
@@ -185,13 +133,12 @@ export default function RestaurantProfile() {
     try {
       await restaurant.uploadAsset(formData)
       setMessage({ type: 'success', text: '✅ Photo uploaded successfully!' })
+      await loadProfile()
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to upload photo' })
     }
     setTimeout(() => setMessage({ type: '', text: '' }), 3000)
   }
-
-  const [activeTab, setActiveTab] = useState('basic')
 
   if (loading) {
     return (
@@ -211,29 +158,198 @@ export default function RestaurantProfile() {
     { id: 'assets', label: 'Brand Assets' },
   ]
 
+  const currentLogoUrl = getLogoUrl(profile, brandAssets)
+  const referencePhotos = brandAssets.filter(asset => asset.asset_type === 'REFERENCE_PHOTO' && asset.file_url)
+
+  const handleStartEdit = () => {
+    setIsEditing(true)
+    setActiveTab('basic')
+    setMessage({ type: '', text: '' })
+  }
+
+  const handleCancelEdit = () => {
+    setForm(mapRestaurantToForm(profile || {}))
+    setIsEditing(false)
+    setActiveTab('basic')
+    setMessage({ type: '', text: '' })
+  }
+
+  if (!isEditing) {
+    return (
+      <div style={{ padding: '36px 42px', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ maxWidth: 720 }}>
+            <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.8rem', letterSpacing: '-0.04em', color: NAVY, lineHeight: 1 }}>Restaurant Profile</h1>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.9rem', color: 'rgba(12,12,12,0.5)', marginTop: 8, maxWidth: 640, lineHeight: 1.6 }}>
+              Review the current restaurant details, brand assets, and profile settings before making changes.
+            </p>
+          </div>
+          <button
+            onClick={handleStartEdit}
+            style={{
+              padding: '12px 28px', borderRadius: 8, border: 'none', background: TEAL,
+              color: 'white', fontFamily: 'Unbounded, sans-serif', fontWeight: 700, fontSize: '0.62rem',
+              letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0,122,100,0.25)', transition: 'all 0.2s',
+              display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+            }}
+          >
+            Edit Profile
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+          </button>
+        </div>
+
+        {message.text && (
+          <div style={{
+            padding: '14px 20px', marginBottom: 24, borderRadius: 10,
+            background: message.type === 'success' ? 'rgba(0,122,100,0.06)' : 'rgba(220,38,38,0.06)',
+            border: `1px solid ${message.type === 'success' ? 'rgba(0,122,100,0.2)' : 'rgba(220,38,38,0.2)'}`,
+            color: message.type === 'success' ? TEAL : '#dc2626',
+            fontSize: '0.85rem', fontFamily: 'Inter, sans-serif', fontWeight: 500,
+          }}>
+            {message.text}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 0.9fr)', gap: 24, alignItems: 'stretch' }}>
+          <div style={{ background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(24px)', border: '1px solid rgba(12,12,12,0.08)', borderRadius: 18, padding: 28, boxShadow: '0 2px 24px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', gap: 18, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+              <div style={{ width: 88, height: 88, borderRadius: 18, background: currentLogoUrl ? 'white' : 'linear-gradient(135deg, rgba(0,122,100,0.08), rgba(232,100,10,0.08))', border: '1px solid rgba(12,12,12,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                {currentLogoUrl ? (
+                  <img src={currentLogoUrl} alt="Restaurant logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 10 }} />
+                ) : (
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.62rem', letterSpacing: '0.12em', color: 'rgba(12,12,12,0.42)', textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.5 }}>No Logo<br />Uploaded</span>
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {form.city && (
+                    <span style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(0,122,100,0.08)', color: TEAL, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', fontFamily: 'Space Mono, monospace' }}>{form.city}</span>
+                  )}
+                  {form.priceRange && (
+                    <span style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(26,35,50,0.06)', color: NAVY, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', fontFamily: 'Space Mono, monospace' }}>{form.priceRange}</span>
+                  )}
+                </div>
+                <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.6rem', letterSpacing: '-0.04em', color: NAVY, margin: 0, lineHeight: 1.1 }}>{form.name || 'Restaurant profile'}</h2>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.92rem', color: 'rgba(12,12,12,0.6)', marginTop: 10, lineHeight: 1.6, maxWidth: 680 }}>
+                  {form.about || 'Add a description so the AI engine can understand the restaurant story, voice, and positioning.'}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Owner / Manager" value={form.ownerName} />
+              </div>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Cuisine" value={form.cuisine} />
+              </div>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Audience" value={form.audience} />
+              </div>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Brand Tone" value={form.tone} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Phone" value={form.phoneNumber} />
+              </div>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Email" value={form.contactEmail} />
+              </div>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Google Maps" value={form.googleMapsUrl} />
+              </div>
+              <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                <DetailItem label="Brand Color" value={form.brandColor} />
+              </div>
+            </div>
+
+            {form.brandStory && (
+              <div style={{ marginTop: 22, border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 18, background: 'rgba(0,122,100,0.03)' }}>
+                <DetailItem label="Brand Story" value={form.brandStory} />
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gap: 24 }}>
+            <div style={{ background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(24px)', border: '1px solid rgba(12,12,12,0.08)', borderRadius: 18, padding: 24, boxShadow: '0 2px 24px rgba(0,0,0,0.03)' }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '1rem', color: NAVY, marginBottom: 18 }}>Brand Assets</h3>
+              <div style={{ display: 'grid', gap: 16 }}>
+                <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white', display: 'flex', gap: 16, alignItems: 'center' }}>
+                  <div style={{ width: 72, height: 72, borderRadius: 16, border: '1px solid rgba(12,12,12,0.08)', background: 'rgba(0,122,100,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {currentLogoUrl ? <img src={currentLogoUrl} alt="Current logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }} /> : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.55rem', color: 'rgba(12,12,12,0.38)', textTransform: 'uppercase' }}>No logo</span>}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, color: NAVY, marginBottom: 6 }}>Current logo</div>
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.78rem', color: 'rgba(12,12,12,0.55)', lineHeight: 1.5 }}>The uploaded logo is shown here and can be used in the dashboard header and profile overview.</div>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'white' }}>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, color: NAVY, marginBottom: 12 }}>Reference photos</div>
+                  {referencePhotos.length > 0 ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: 10 }}>
+                      {referencePhotos.slice(0, 6).map(asset => (
+                        <div key={asset.id} style={{ aspectRatio: '1 / 1', borderRadius: 12, border: '1px solid rgba(12,12,12,0.08)', overflow: 'hidden', background: 'rgba(12,12,12,0.03)' }}>
+                          <img src={asset.file_url} alt={asset.file_name || 'Reference photo'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.78rem', color: 'rgba(12,12,12,0.52)' }}>No reference photos uploaded yet.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(24px)', border: '1px solid rgba(12,12,12,0.08)', borderRadius: 18, padding: 24, boxShadow: '0 2px 24px rgba(0,0,0,0.03)' }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '1rem', color: NAVY, marginBottom: 18 }}>Quick Actions</h3>
+              <div style={{ display: 'grid', gap: 12 }}>
+                <button onClick={handleStartEdit} style={{ padding: '12px 16px', borderRadius: 10, border: 'none', background: NAVY, color: 'white', fontFamily: 'Unbounded, sans-serif', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer' }}>Edit Details</button>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.78rem', color: 'rgba(12,12,12,0.55)', lineHeight: 1.6 }}>Use edit mode to update business info, branding settings, and upload a new logo or photos.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '36px 42px', maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 36, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
+      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ maxWidth: 720 }}>
           <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.8rem', letterSpacing: '-0.04em', color: NAVY, lineHeight: 1 }}>Restaurant Profile</h1>
           <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.9rem', color: 'rgba(12,12,12,0.5)', marginTop: 8, maxWidth: 640, lineHeight: 1.6 }}>
             The more detail you provide about your brand, the better our AI engine becomes at generating hyper-personalized, engaging marketing content tailored exclusively for your audience.
           </p>
         </div>
-        <button onClick={handleSave} disabled={saving} style={{
-          padding: '12px 32px', borderRadius: 8, border: 'none', background: saving ? 'rgba(0,122,100,0.6)' : TEAL,
-          color: 'white', fontFamily: 'Unbounded, sans-serif', fontWeight: 700, fontSize: '0.62rem',
-          letterSpacing: '0.08em', textTransform: 'uppercase', cursor: saving ? 'not-allowed' : 'pointer',
-          boxShadow: saving ? 'none' : '0 4px 16px rgba(0,122,100,0.25)', transition: 'all 0.2s',
-          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-        }}>
-          {saving ? 'Saving...' : 'Save Profile'}
-          {!saving && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
-        </button>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <button onClick={handleCancelEdit} disabled={saving} style={{
+            padding: '12px 22px', borderRadius: 8, border: '1px solid rgba(12,12,12,0.14)', background: 'white',
+            color: NAVY, fontFamily: 'Unbounded, sans-serif', fontWeight: 700, fontSize: '0.58rem',
+            letterSpacing: '0.08em', textTransform: 'uppercase', cursor: saving ? 'not-allowed' : 'pointer',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.04)', transition: 'all 0.2s',
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+          }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving} style={{
+            padding: '12px 32px', borderRadius: 8, border: 'none', background: saving ? 'rgba(0,122,100,0.6)' : TEAL,
+            color: 'white', fontFamily: 'Unbounded, sans-serif', fontWeight: 700, fontSize: '0.62rem',
+            letterSpacing: '0.08em', textTransform: 'uppercase', cursor: saving ? 'not-allowed' : 'pointer',
+            boxShadow: saving ? 'none' : '0 4px 16px rgba(0,122,100,0.25)', transition: 'all 0.2s',
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+          }}>
+            {saving ? 'Saving...' : 'Save Profile'}
+            {!saving && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+          </button>
+        </div>
       </div>
 
-      {/* Status message */}
       {message.text && (
         <div style={{
           padding: '14px 20px', marginBottom: 24, borderRadius: 10,
@@ -247,12 +363,9 @@ export default function RestaurantProfile() {
         </div>
       )}
 
-      {/* Tabs Layout */}
       <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
-        
-        {/* Sidebar Tabs */}
         <div style={{
-          width: 240, flexShrink: 0, 
+          width: 240, flexShrink: 0,
           display: 'flex', flexDirection: 'column', gap: 6,
           position: 'sticky', top: 90,
         }}>
@@ -277,7 +390,6 @@ export default function RestaurantProfile() {
           ))}
         </div>
 
-        {/* Tab Content Area */}
         <div style={{
           flex: 1, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(24px)',
           border: '1px solid rgba(12,12,12,0.08)', borderRadius: 16,
@@ -436,6 +548,15 @@ export default function RestaurantProfile() {
           {activeTab === 'assets' && (
             <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
               <h3 style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '1.2rem', color: NAVY, marginBottom: 28 }}>Brand Assets</h3>
+              <div style={{ marginBottom: 24, border: '1px solid rgba(12,12,12,0.08)', borderRadius: 14, padding: 16, background: 'rgba(0,122,100,0.03)', display: 'flex', gap: 16, alignItems: 'center' }}>
+                <div style={{ width: 72, height: 72, borderRadius: 16, border: '1px solid rgba(12,12,12,0.08)', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  {currentLogoUrl ? <img src={currentLogoUrl} alt="Current logo preview" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }} /> : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.55rem', color: 'rgba(12,12,12,0.38)', textTransform: 'uppercase' }}>No logo</span>}
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, color: NAVY, marginBottom: 6 }}>Current logo preview</div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.78rem', color: 'rgba(12,12,12,0.55)', lineHeight: 1.5 }}>This is the logo currently attached to the restaurant profile and showcased on the overview page.</div>
+                </div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(200px, 1fr)', gap: 32 }}>
                 <FormField label="Brand Logo (High Res)">
                   <label style={{ 

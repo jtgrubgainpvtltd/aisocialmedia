@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { content, posts, analytics } from "../api/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LANGUAGES, PLATFORMS, TONES } from "../constants/platforms";
@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import ImageCropperModal from "./ImageCropperModal";
 import { useToast, ToastContainer } from "./Toast";
 import { PreviewInstagramPost, PreviewInstagramStory, PreviewTwitter, PreviewFacebook, PreviewWhatsApp } from "./SocialPreviews";
+import SelectField from "./ui/SelectField";
 
 
 const BACKEND_ORIGIN = (
@@ -47,58 +48,13 @@ const sizeMap = {
   'Status': '1024x1792',
 };
 
-function SelectField({ label, options, value, onChange }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label
-        className="text-[0.58rem] tracking-[0.14em] uppercase"
-        style={{ fontFamily: "Space Mono, monospace", color: "var(--fg-dim)" }}
-      >
-        {label}
-      </label>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full px-4 py-3 pr-10 rounded-xl text-sm font-medium transition-all duration-150"
-          style={{
-            background: "var(--bg-card)",
-            border: "1px solid var(--border)",
-            color: "var(--fg)",
-            fontFamily: "Inter, sans-serif",
-            backdropFilter: "blur(10px)",
-            appearance: "none",
-          }}
-        >
-          {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-        <svg
-          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          style={{ color: "var(--fg-dim)" }}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
-    </div>
-  );
-}
-
 export default function AIContentStudio() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const { toasts, toast } = useToast();
   const queryClient = useQueryClient();
+  const historyToastShownRef = useRef(false);
 
   const [platform, setPlatform] = useState(platforms[0]);
   const [language, setLanguage] = useState(languages[0]);
@@ -148,24 +104,14 @@ export default function AIContentStudio() {
     const urlCaption = searchParams.get("caption");
     const urlImageUrl = searchParams.get("imageUrl");
     const urlPlatform = searchParams.get("platform");
-    const fromHistory = searchParams.get("fromHistory");
-    let historyPayload = null;
-
-    if (fromHistory === 'true') {
-      try {
-        const raw = sessionStorage.getItem("historyEditPayload");
-        historyPayload = raw ? JSON.parse(raw) : null;
-      } catch {
-        historyPayload = null;
-      }
-    }
+    const historyPayload = location.state?.historyEditPayload || null;
 
     if (urlPrompt) {
       setPrompt(decodeURIComponent(urlPrompt));
     }
 
     // If coming from History page, pre-fill everything
-    if (fromHistory === 'true') {
+    if (historyPayload) {
       const resolvedCaption = historyPayload?.caption || (urlCaption ? decodeURIComponent(urlCaption) : "");
       const resolvedImageUrl = historyPayload?.imageUrl || (urlImageUrl ? decodeURIComponent(urlImageUrl) : "");
       const resolvedPlatform = historyPayload?.platform || (urlPlatform ? decodeURIComponent(urlPlatform) : "");
@@ -204,18 +150,12 @@ export default function AIContentStudio() {
       setGenerated(true); // Mark as generated so buttons appear
       
       // Show toast only once (avoid double-render in dev mode)
-      const toastShown = sessionStorage.getItem('history_toast_shown');
-      if (!toastShown) {
+      if (!historyToastShownRef.current) {
         toast.success('Post loaded from history! You can edit, crop, or schedule.');
-        sessionStorage.setItem('history_toast_shown', 'true');
-        // Clear flag after navigation
-        setTimeout(() => sessionStorage.removeItem('history_toast_shown'), 1000);
+        historyToastShownRef.current = true;
       }
-
-      // One-time use payload
-      sessionStorage.removeItem("historyEditPayload");
     }
-  }, [searchParams]);
+  }, [searchParams, location.state, toast]);
 
   // Scheduler state
   const [showScheduler, setShowScheduler] = useState(false);
@@ -284,7 +224,6 @@ export default function AIContentStudio() {
         addEmojis: addEmojis,
         autoHashtags: autoHashtags,
         generateImage: true,
-        // NOTE: dalleStyle is removed — gpt-image-1 does not support this parameter
       });
 
       if (data.success) {

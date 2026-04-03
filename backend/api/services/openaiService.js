@@ -1,12 +1,19 @@
 import OpenAI from "openai";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
+import sharp from "sharp";
 import logger from "../utils/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOADS_DIR = path.resolve(__dirname, "../../public/uploads");
+const BACKEND_ROOT = path.resolve(__dirname, "../../");
+const GRUBGAIN_LOGO_PATH = path.resolve(
+  __dirname,
+  "../../../frontend/public/branding/logo.png",
+);
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -203,16 +210,99 @@ async function saveGeneratedImage(b64_json) {
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
-  const fileName = `generated_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
+  const fileName = `generated_${crypto.randomUUID()}.png`;
   const filePath = path.join(UPLOADS_DIR, fileName);
-  await fs.promises.writeFile(filePath, Buffer.from(b64_json, "base64"));
+  const buffer = Buffer.isBuffer(b64_json) ? b64_json : Buffer.from(b64_json, "base64");
+  await fs.promises.writeFile(filePath, buffer);
   logger.info("Generated image saved", { fileName });
   return `/uploads/${fileName}`;
 }
 
+function resolveLocalImagePath(publicPath) {
+  if (!publicPath || typeof publicPath !== "string") {
+    return null;
+  }
+
+  if (publicPath.startsWith("/uploads/")) {
+    return path.resolve(BACKEND_ROOT, "public", publicPath.replace(/^\//, ""));
+  }
+
+  if (path.isAbsolute(publicPath)) {
+    return publicPath;
+  }
+
+  return null;
+}
+
+async function createBrandBadge(imagePath, { width, height, x, y }) {
+  if (!imagePath || !fs.existsSync(imagePath)) {
+    return [];
+  }
+
+  const logoBuffer = await sharp(imagePath)
+    .resize({ width, height, fit: "contain", withoutEnlargement: true })
+    .png()
+    .toBuffer();
+
+  const badgeSize = Math.max(width, height) + 44;
+  const badgeSvg = Buffer.from(`
+    <svg width="${badgeSize}" height="${badgeSize}" viewBox="0 0 ${badgeSize} ${badgeSize}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${badgeSize}" height="${badgeSize}" rx="28" fill="rgba(255,255,255,0.92)"/>
+    </svg>
+  `);
+
+  return [
+    { input: badgeSvg, top: y - 22, left: x - 22 },
+    { input: logoBuffer, top: y, left: x },
+  ];
+}
+
+async function applyBrandingToPoster({ baseImageBuffer, restaurantLogoUrl }) {
+  const image = sharp(baseImageBuffer);
+  const metadata = await image.metadata();
+  const width = metadata.width || 1024;
+  const height = metadata.height || 1024;
+  const overlays = [];
+
+  const restaurantLogoPath = resolveLocalImagePath(restaurantLogoUrl);
+  overlays.push(...await createBrandBadge(restaurantLogoPath, {
+    width: Math.max(120, Math.round(width * 0.16)),
+    height: Math.max(120, Math.round(height * 0.16)),
+    x: Math.round(width * 0.04),
+    y: Math.round(height * 0.04),
+  }));
+
+  if (fs.existsSync(GRUBGAIN_LOGO_PATH)) {
+    const footerLogoWidth = Math.max(48, Math.round(width * 0.06));
+    const footerLogoBuffer = await sharp(GRUBGAIN_LOGO_PATH)
+      .resize({ width: footerLogoWidth, height: footerLogoWidth, fit: "contain", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+
+    const footerWidth = Math.max(220, Math.round(width * 0.26));
+    const footerHeight = Math.max(72, Math.round(height * 0.075));
+    const footerLeft = width - footerWidth - Math.round(width * 0.04);
+    const footerTop = height - footerHeight - Math.round(height * 0.04);
+    const footerSvg = Buffer.from(`
+      <svg width="${footerWidth}" height="${footerHeight}" viewBox="0 0 ${footerWidth} ${footerHeight}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="0" width="${footerWidth}" height="${footerHeight}" rx="18" fill="rgba(26,35,50,0.88)"/>
+        <text x="${Math.round(footerWidth * 0.34)}" y="${Math.round(footerHeight * 0.60)}" font-family="Arial, sans-serif" font-size="${Math.max(16, Math.round(footerHeight * 0.34))}" font-weight="700" fill="#ffffff">Powered by GrubGain</text>
+      </svg>
+    `);
+
+    overlays.push({ input: footerSvg, top: footerTop, left: footerLeft });
+    overlays.push({ input: footerLogoBuffer, top: footerTop + Math.round(footerHeight * 0.18), left: footerLeft + Math.round(footerHeight * 0.18) });
+  }
+
+  if (overlays.length === 0) {
+    return baseImageBuffer;
+  }
+
+  return sharp(baseImageBuffer).composite(overlays).png().toBuffer();
+}
+
 /**
- * Generate a marketing poster image using gpt-image-1.5
- * The model renders text, logos, and layouts natively — no post-processing needed.
+ * Generate a marketing poster image using gpt-image-1.5 and then composite exact branding assets.
  *
  * @param {Object} params
  * @param {string} params.prompt  - Full marketing poster prompt
@@ -224,6 +314,7 @@ export const generateImage = async ({
   prompt,
   size = "1024x1024",
   quality = "high",
+  restaurantLogoUrl = "",
 }) => {
   try {
     logger.info("Generating image with gpt-image-1.5", {
@@ -243,23 +334,28 @@ export const generateImage = async ({
           // NOTE: gpt-image-1.5 does NOT accept a "style" parameter.
           // "vivid" / "natural" are DALL-E 3 parameters and will cause a 400 error.
         }),
-      "generateImage (gpt-image-1)",
+      "generateImage (gpt-image-1.5)",
     );
 
-    // gpt-image-1 returns b64_json by default, not a temporary URL
+    // gpt-image-1.5 returns b64_json by default, not a temporary URL
     if (!response?.data?.[0]?.b64_json) {
-      throw new Error("gpt-image-1 response is missing b64_json data");
+      throw new Error("gpt-image-1.5 response is missing b64_json data");
     }
 
-    const imageUrl = await saveGeneratedImage(response.data[0].b64_json);
+    const baseImageBuffer = Buffer.from(response.data[0].b64_json, "base64");
+    const brandedImageBuffer = await applyBrandingToPoster({
+      baseImageBuffer,
+      restaurantLogoUrl,
+    });
+    const imageUrl = await saveGeneratedImage(brandedImageBuffer);
 
-    logger.info("gpt-image-1 image generated and saved", { imageUrl });
+    logger.info("gpt-image-1.5 image generated and saved", { imageUrl });
 
     return {
       success: true,
       imageUrl,
       metadata: {
-        model: "gpt-image-1",
+        model: "gpt-image-1.5",
         size,
         quality,
       },
@@ -288,6 +384,9 @@ export const generateFoodPrompt = ({
   signatureDishes = "",
   campaignType = "General Branding",
   description = "",
+  restaurantLogoUrl = "",
+  restaurantBrandColor = "",
+  restaurantBrandStory = "",
 }) => {
   // ── Brand tone → visual design language ──────────────────────────────────
   const toneMap = {
@@ -326,6 +425,24 @@ export const generateFoodPrompt = ({
 
   // ── Extra context ─────────────────────────────────────────────────────────
   const contextNote = description ? `ADDITIONAL CONTEXT: ${description}` : "";
+  
+  // SECURITY FIX: Sanitize user-controlled logo URL to prevent prompt injection
+  const sanitizedLogoUrl = restaurantLogoUrl 
+    ? (restaurantLogoUrl.startsWith('http://') || restaurantLogoUrl.startsWith('https://'))
+      ? restaurantLogoUrl.slice(0, 300) // Truncate to prevent injection
+      : '' // Reject non-HTTP URLs
+    : '';
+  
+  const logoNote = sanitizedLogoUrl
+    ? `LOGO REQUIREMENT: Use the restaurant logo from this reference URL as a visible, legible brand mark in the composition: ${sanitizedLogoUrl}. The logo must be clearly displayed and not omitted.`
+    : "LOGO REQUIREMENT: A restaurant logo must be visible in the final poster. If no uploaded logo is available, create a clean placeholder logo lockup using the restaurant name without inventing a different brand.";
+  
+  const brandColorNote = restaurantBrandColor
+    ? `BRAND COLOR REQUIREMENT: Respect the restaurant's primary brand color ${restaurantBrandColor} in accents, badges, or background elements.`
+    : "BRAND COLOR REQUIREMENT: Use a coherent restaurant brand palette that feels premium and consistent.";
+  const brandStoryNote = restaurantBrandStory
+    ? `BRAND STORY REQUIREMENT: Reflect this brand story in the visual mood and layout: ${restaurantBrandStory}`
+    : "BRAND STORY REQUIREMENT: Keep the visual identity consistent with a modern restaurant brand.";
 
   // ── Assemble the full prompt ──────────────────────────────────────────────
   return `
@@ -342,6 +459,17 @@ Cuisine: ${cuisineType}
 • Zero blurriness, zero warped letters, zero misspellings, zero garbled or melted text.
 • Text must look IDENTICAL to how it would appear on a real printed poster.
 • Treat the text rendering with the same precision as a billboard advertisement.
+
+━━━ MANDATORY BRANDING ━━━
+• The restaurant identity, logo, and name must be treated as mandatory elements, not optional decoration.
+• The poster must include the restaurant logo, restaurant name, and location cues in a coherent hierarchy.
+• Include a small GrubGain brand footer or badge that clearly reads "Powered by GrubGain".
+• The GrubGain brand mark must be visible, clean, and secondary to the restaurant branding.
+• Do not omit either the restaurant branding or the GrubGain branding.
+
+${logoNote}
+${brandColorNote}
+${brandStoryNote}
 
 ━━━ VISUAL DESIGN STYLE ━━━
 ${visualStyle}
@@ -402,6 +530,9 @@ export const generateFullContent = async (params) => {
       campaignType: params.campaignType || "General Branding",
       description:
         params.prompt || params.occasion || params.dishDescription || "",
+      restaurantLogoUrl: params.restaurantLogoUrl || "",
+      restaurantBrandColor: params.restaurantBrandColor || "",
+      restaurantBrandStory: params.restaurantBrandStory || "",
     });
 
     // ── Step 3: Generate the image — gpt-image-1.5 renders text natively ─────
@@ -417,6 +548,7 @@ export const generateFullContent = async (params) => {
       prompt: imagePrompt,
       size: resolvedSize,
       quality: "high", // Always use 'high' for production marketing assets
+      restaurantLogoUrl: params.restaurantLogoUrl || "",
     });
 
     logger.info("Full content package generated successfully", {
@@ -432,7 +564,7 @@ export const generateFullContent = async (params) => {
         image: imageResult.metadata,
         generatedAt: new Date().toISOString(),
         usedPrompt: imagePrompt,
-        brandingApplied: false, // gpt-image-1.5 handles branding natively in the image
+        brandingApplied: true,
       },
     };
   } catch (error) {
@@ -492,14 +624,42 @@ Raw JSON array only:`;
       .replace(/```/g, "")
       .trim();
 
-    const events = JSON.parse(cleanJson);
+    // SECURITY FIX: Validate AI-generated JSON structure before spreading
+    let events;
+    try {
+      events = JSON.parse(cleanJson);
+    } catch (parseError) {
+      logger.error("Failed to parse AI-generated JSON", { error: parseError.message });
+      return []; // Graceful fallback
+    }
 
-    // Map them to the dashboard format by ensuring an ID and icon
-    return events.map((ev, i) => ({
-      ...ev,
-      id: `dynamic-event-${Date.now()}-${i}`,
-      icon: ev.source.toLowerCase().includes("sport") ? "event" : "google",
-    }));
+    // Type guard: Ensure it's an array
+    if (!Array.isArray(events)) {
+      logger.warn("AI returned non-array JSON for events", { type: typeof events });
+      return [];
+    }
+
+    // Validate and sanitize each event object
+    const validEvents = events
+      .filter(ev => {
+        // Basic structure validation
+        if (!ev || typeof ev !== 'object') return false;
+        if (typeof ev.title !== 'string') return false;
+        if (!['event', 'Local Insights'].includes(ev.type)) return false;
+        return true;
+      })
+      .map((ev, i) => ({
+        // Explicitly construct safe object - don't spread untrusted AI data
+        id: `dynamic-event-${Date.now()}-${i}`,
+        title: String(ev.title).slice(0, 200), // Sanitize and limit length
+        type: ev.type,
+        date: ev.date ? String(ev.date).slice(0, 50) : undefined,
+        description: ev.description ? String(ev.description).slice(0, 500) : undefined,
+        source: ev.source ? String(ev.source).slice(0, 100) : 'Unknown',
+        icon: ev.source?.toLowerCase().includes("sport") ? "event" : "google",
+      }));
+
+    return validEvents;
   } catch (error) {
     logger.error("Error fetching dynamic events from OpenAI", {
       error: error.message,

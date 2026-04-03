@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { content, posts } from "../../api/client";
 import { useToast, ToastContainer } from "../../components/Toast";
+import QueryState from "../../components/ui/QueryState";
 
 const TEAL = "#007A64";
 const NAVY = "#1a2332";
@@ -15,14 +16,14 @@ export default function HistoryPage() {
   const { toasts, toast } = useToast();
 
   // ── Fetch content history via React Query ──
-  const { data: contentData, isLoading: contentLoading } = useQuery({
+  const { data: contentData, isLoading: contentLoading, error: contentError, refetch: refetchContent } = useQuery({
     queryKey: ["content-history"],
     queryFn: () =>
       content.getHistory({ limit: 50, offset: 0 }).then((r) => r.data),
   });
 
   // ── Fetch published posts via React Query ──
-  const { data: publishedData, isLoading: publishedLoading } = useQuery({
+  const { data: publishedData, isLoading: publishedLoading, error: publishedError, refetch: refetchPublished } = useQuery({
     queryKey: ["published-posts"],
     queryFn: () =>
       posts.getPublished({ limit: 50, offset: 0 }).then((r) => r.data),
@@ -47,7 +48,7 @@ export default function HistoryPage() {
       hour: "2-digit",
       minute: "2-digit",
     }),
-    model: "GPT-4o-mini",
+    model: c.image_url ? "GPT-Image-1.5 + GPT-4o-mini" : "GPT-4o-mini",
     promptUsed: c.prompt
       ? (() => {
           try {
@@ -87,17 +88,19 @@ export default function HistoryPage() {
   }));
 
   const allPosts = [...publishedItems, ...generatedItems];
+  const modelSummary = "GPT-4o-mini";
 
   const handleViewPost = (post) => {
-    // Navigate to Content Studio with this post's data pre-loaded via URL params
-    const params = new URLSearchParams({
-      caption: post.fullCaption,
-      imageUrl: post.imageUrl || '',
-      platform: post.platform || 'INSTAGRAM',
-      fromHistory: 'true',
-      postId: String(post.id),
+    navigate("/dashboard/studio", {
+      state: {
+        historyEditPayload: {
+          caption: post.fullCaption || "",
+          imageUrl: post.imageUrl || "",
+          platform: post.platform || "INSTAGRAM",
+          postId: String(post.id),
+        },
+      },
     });
-    navigate(`/dashboard/studio?${params.toString()}`);
   };
 
   const handleDelete = async (id) => {
@@ -124,24 +127,18 @@ export default function HistoryPage() {
     );
   });
 
-  if (loading) {
-    return (
-      <div style={{ padding: "60px 32px", textAlign: "center" }}>
-        <div
-          style={{
-            fontFamily: "Space Mono, monospace",
-            fontSize: "0.75rem",
-            color: "rgba(12,12,12,0.4)",
-          }}
-        >
-          Loading history...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
+      <QueryState
+        loading={loading}
+        error={contentError || publishedError}
+        onRetry={() => {
+          refetchContent();
+          refetchPublished();
+        }}
+        loadingTitle="Loading content history"
+        loadingSubtitle="Gathering generated and published posts…"
+      >
       <div style={{ padding: "28px 32px", maxWidth: 1200 }}>
         {/* Header */}
         <div
@@ -165,7 +162,7 @@ export default function HistoryPage() {
                 marginBottom: 4,
               }}
             >
-              07 — Archive
+              Archive
             </p>
             <h1
               style={{
@@ -288,7 +285,7 @@ export default function HistoryPage() {
                 lineHeight: 1,
               }}
             >
-              GPT-4o-mini
+              {modelSummary}
             </h3>
           </div>
 
@@ -323,7 +320,7 @@ export default function HistoryPage() {
                 lineHeight: 1,
               }}
             >
-              DALL-E 3
+              GPT-Image-1.5
             </h3>
           </div>
         </div>
@@ -687,6 +684,7 @@ export default function HistoryPage() {
           )}
         </div>
       </div>
+      </QueryState>
       <ToastContainer toasts={toasts} />
     </>
   );

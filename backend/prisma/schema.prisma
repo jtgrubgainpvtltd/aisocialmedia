@@ -29,8 +29,8 @@ model User {
   role                UserRole       @default(RESTAURANT_OWNER)
   status              UserStatus     @default(ACTIVE)
   email_verified      Boolean        @default(false)
-  verification_token  String?
-  reset_token         String?
+  verification_token_hash String?         @map("verification_token")
+  reset_token_hash        String?         @map("reset_token")
   reset_token_expires DateTime?
   iud_flag            IudFlag        @default(I)
   created_by          String
@@ -391,6 +391,7 @@ enum ScheduledStatus {
   PENDING
   APPROVED
   IN_REVIEW
+  PROCESSING
   PUBLISHED
   FAILED
 }

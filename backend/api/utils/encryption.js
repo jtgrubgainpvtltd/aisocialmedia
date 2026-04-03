@@ -4,35 +4,39 @@ import { logger } from './logger.js';
 
 dotenv.config();
 
-if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length !== 32) {
-  throw new Error('ENCRYPTION_KEY must be exactly 32 characters');
-}
-if (!process.env.ENCRYPTION_IV || process.env.ENCRYPTION_IV.length !== 16) {
-  throw new Error('ENCRYPTION_IV must be exactly 16 characters');
+// SECURITY: Validate encryption key is 64 hex characters (32 bytes for AES-256)
+if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length !== 64) {
+  throw new Error('ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes). Use generateKey() to create one.');
 }
 
-const ALGORITHM = 'aes-256-cbc';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-const IV = process.env.ENCRYPTION_IV;
+const ALGORITHM = 'aes-256-gcm';
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
 
 /**
- * Encrypt sensitive data (API keys, tokens, etc.)
+ * Encrypt sensitive data using AES-256-GCM with random IV per encryption
+ * SECURITY: GCM mode provides authenticated encryption, preventing tampering
+ * Format: iv:authTag:encryptedData (all hex-encoded)
+ * 
  * @param {string} text - Plain text to encrypt
- * @returns {string} - Encrypted text in hex format
+ * @returns {string} - Encrypted text in format "iv:authTag:ciphertext"
  */
 export function encrypt(text) {
   if (!text) return null;
 
   try {
-    const cipher = crypto.createCipheriv(
-      ALGORITHM,
-      Buffer.from(ENCRYPTION_KEY),
-      Buffer.from(IV)
-    );
+    // Generate a new random IV for each encryption (CRITICAL for security)
+    const iv = crypto.randomBytes(16);
+    
+    const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
 
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
-    return encrypted;
+    
+    // Get authentication tag for integrity verification
+    const authTag = cipher.getAuthTag().toString('hex');
+
+    // Return format: iv:authTag:ciphertext
+    return `${iv.toString('hex')}:${authTag}:${encrypted}`;
   } catch (error) {
     logger.error('Encryption error:', error.message);
     throw new Error('Failed to encrypt data');
@@ -40,21 +44,30 @@ export function encrypt(text) {
 }
 
 /**
- * Decrypt encrypted data
- * @param {string} encryptedText - Encrypted text in hex format
+ * Decrypt data encrypted with AES-256-GCM
+ * SECURITY: Verifies authentication tag to detect tampering
+ * 
+ * @param {string} encryptedText - Encrypted text in format "iv:authTag:ciphertext"
  * @returns {string} - Decrypted plain text
  */
 export function decrypt(encryptedText) {
   if (!encryptedText) return null;
 
   try {
-    const decipher = crypto.createDecipheriv(
-      ALGORITHM,
-      Buffer.from(ENCRYPTION_KEY),
-      Buffer.from(IV)
-    );
+    // Split the encrypted text into components
+    const parts = encryptedText.split(':');
+    if (parts.length !== 3) {
+      throw new Error('Invalid encrypted data format');
+    }
 
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    const [ivHex, authTagHex, encrypted] = parts;
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+
+    const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch (error) {
@@ -64,18 +77,19 @@ export function decrypt(encryptedText) {
 }
 
 /**
- * Generate a random encryption key
- * @param {number} length - Key length (default: 32 for AES-256)
- * @returns {string} - Random hex string
+ * Generate a cryptographically secure random encryption key for AES-256
+ * SECURITY FIX: Generates full 32 bytes (64 hex chars), not truncated
+ * 
+ * @returns {string} - 64-character hex string (32 bytes)
  */
-export function generateKey(length = 32) {
-  return crypto.randomBytes(length).toString('hex').slice(0, length);
+export function generateKey() {
+  return crypto.randomBytes(32).toString('hex'); // 32 bytes = 64 hex chars
 }
 
 /**
- * Generate a random IV
- * @returns {string} - Random 16-character string
+ * Generate a random IV (for reference - not needed with GCM auto-generation)
+ * @returns {string} - 32-character hex string (16 bytes)
  */
 export function generateIV() {
-  return crypto.randomBytes(16).toString('hex').slice(0, 16);
+  return crypto.randomBytes(16).toString('hex'); // 16 bytes = 32 hex chars
 }

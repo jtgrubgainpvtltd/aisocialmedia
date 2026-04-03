@@ -3,7 +3,7 @@ import prisma from '../../prisma/client.js';
 import { generateAccessToken, generateRefreshToken as createRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
 import logger from '../utils/logger.js';
 
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 12;
 
 /**
  * Generate and save refresh token to database
@@ -35,19 +35,16 @@ async function generateAndSaveRefreshToken(userId) {
  */
 export async function register({ email, password, restaurantName, city, area, cuisineType, targetAudience }) {
   try {
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email }
     });
 
     if (existingUser) {
-      throw new Error('Email already registered');
+      throw new Error('Registration failed. Please check your details.');
     }
 
-    // Hash password
     const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Create user and restaurant in transaction
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -78,7 +75,6 @@ export async function register({ email, password, restaurantName, city, area, cu
       return { user, restaurant };
     });
 
-    // Generate tokens
     const accessToken = generateAccessToken({
       id: result.user.id,
       email: result.user.email,
@@ -111,11 +107,18 @@ export async function register({ email, password, restaurantName, city, area, cu
  */
 export async function login({ email, password }) {
   try {
-    // Find user with restaurant
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
-        restaurant: true
+        restaurant: {
+          include: {
+            brandAssets: {
+              where: { asset_type: 'LOGO' },
+              orderBy: { created_on: 'desc' },
+              take: 1,
+            },
+          },
+        },
       }
     });
 
@@ -123,18 +126,15 @@ export async function login({ email, password }) {
       throw new Error('Invalid email or password');
     }
 
-    // Check if account is active
     if (user.status !== 'ACTIVE') {
       throw new Error('Account is not active');
     }
 
-    // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
       throw new Error('Invalid email or password');
     }
 
-    // Generate tokens
     const accessToken = generateAccessToken({
       id: user.id,
       email: user.email,
@@ -151,7 +151,8 @@ export async function login({ email, password }) {
         email: user.email,
         role: user.role,
         restaurantName: user.restaurant?.name || null,
-        city: user.restaurant?.city || null
+        city: user.restaurant?.city || null,
+        logoUrl: user.restaurant?.logo_url || user.restaurant?.brandAssets?.[0]?.file_url || null
       },
       accessToken,
       refreshToken
@@ -163,14 +164,13 @@ export async function login({ email, password }) {
 }
 
 /**
- * Refresh access token
+ * Refresh access token with token rotation
+ * SECURITY: Implements refresh token rotation to limit theft window
  */
 export async function refreshAccessToken(refreshToken) {
   try {
-    // Verify refresh token
     const decoded = verifyRefreshToken(refreshToken);
 
-    // Check if token exists in database
     const tokenRecord = await prisma.refreshToken.findFirst({
       where: {
         token: refreshToken,
@@ -179,15 +179,15 @@ export async function refreshAccessToken(refreshToken) {
     });
 
     if (!tokenRecord) {
+      logger.warn('Refresh token not found in database', { userId: decoded.userId });
       throw new Error('Invalid refresh token');
     }
 
-    // Check expiry
     if (tokenRecord.expires_at < new Date()) {
+      await prisma.refreshToken.deleteMany({ where: { id: tokenRecord.id } });
       throw new Error('Refresh token expired');
     }
 
-    // Get user for new token
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId }
     });
@@ -196,14 +196,28 @@ export async function refreshAccessToken(refreshToken) {
       throw new Error('User not found');
     }
 
-    // Generate new access token
+    const deleted = await prisma.refreshToken.deleteMany({
+      where: { id: tokenRecord.id }
+    });
+
+    if (deleted.count === 0) {
+      throw new Error('Invalid refresh token');
+    }
+
     const accessToken = generateAccessToken({
       id: user.id,
       email: user.email,
       role: user.role
     });
 
-    return { accessToken };
+    const newRefreshToken = await generateAndSaveRefreshToken(user.id);
+
+    logger.info('Refresh token rotated successfully', { userId: user.id });
+
+    return { 
+      accessToken, 
+      refreshToken: newRefreshToken 
+    };
   } catch (error) {
     logger.error(`Token refresh error: ${error.message}`);
     throw error;
@@ -215,7 +229,6 @@ export async function refreshAccessToken(refreshToken) {
  */
 export async function logout(userId) {
   try {
-    // Delete all refresh tokens for this user
     await prisma.refreshToken.deleteMany({
       where: { user_id: userId }
     });
@@ -249,6 +262,13 @@ export async function getCurrentUser(userId) {
             area: true,
             cuisine_type: true,
             target_audience: true,
+            logo_url: true,
+            brandAssets: {
+              where: { asset_type: 'LOGO' },
+              orderBy: { created_on: 'desc' },
+              take: 1,
+              select: { file_url: true },
+            },
           }
         }
       }
@@ -258,7 +278,6 @@ export async function getCurrentUser(userId) {
       throw new Error('User not found');
     }
 
-    // Flatten for frontend
     return {
       id: user.id,
       email: user.email,
@@ -269,6 +288,7 @@ export async function getCurrentUser(userId) {
       restaurantId: user.restaurant?.id || null,
       area: user.restaurant?.area || null,
       cuisineType: user.restaurant?.cuisine_type || null,
+      logoUrl: user.restaurant?.logo_url || user.restaurant?.brandAssets?.[0]?.file_url || null,
     };
   } catch (error) {
     logger.error(`Get current user error: ${error.message}`);

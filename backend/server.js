@@ -1,5 +1,4 @@
 import dotenv from "dotenv";
-import fs from "fs";
 import app from "./api/index.js";
 import { logger } from "./api/utils/logger.js";
 import { PrismaClient } from "@prisma/client";
@@ -73,7 +72,6 @@ async function startServer() {
 
     // Handle uncaught exceptions
     process.on("uncaughtException", (error) => {
-      fs.writeFileSync("crash.txt", error.stack || error.toString()); // sync, no dynamic import
       logger.error("Uncaught Exception:", error);
       gracefulShutdown("uncaughtException");
     });

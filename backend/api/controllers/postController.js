@@ -19,6 +19,21 @@ export const schedulePost = async (req, res, next) => {
       image_url
     } = req.body;
 
+    // Validate schedule date input before persistence
+    const parsedDate = new Date(scheduled_date);
+    if (!scheduled_date || Number.isNaN(parsedDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'scheduled_date must be a valid date' }
+      });
+    }
+    if (parsedDate <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'scheduled_date must be in the future' }
+      });
+    }
+
     // Get user's restaurant
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -38,7 +53,7 @@ export const schedulePost = async (req, res, next) => {
         restaurant_id: user.restaurant.id,
         content_id: content_id ? parseInt(content_id) : null,
         platform: (platform || 'INSTAGRAM').toUpperCase(),
-        scheduled_date: new Date(scheduled_date),
+        scheduled_date: parsedDate,
         scheduled_time: scheduled_time || '18:00',
         caption: caption || '',
         image_url: image_url || null,
@@ -117,6 +132,9 @@ export const getPublishedPosts = async (req, res, next) => {
     const userId = req.user.id;
     const { limit = 50, offset = 0 } = req.query;
 
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100); // Min 1, Max 100
+    const safeOffset = Math.max(parseInt(offset) || 0, 0); // Min 0
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: { restaurant: true }
@@ -135,8 +153,8 @@ export const getPublishedPosts = async (req, res, next) => {
         iud_flag: { not: 'D' }
       },
       orderBy: { published_date: 'desc' },
-      take: parseInt(limit),
-      skip: parseInt(offset)
+      take: safeLimit,
+      skip: safeOffset
     });
 
     const total = await prisma.publishedPost.count({
@@ -167,7 +185,29 @@ export const getPublishedPosts = async (req, res, next) => {
 export const cancelScheduledPost = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const restaurantId = req.user.restaurant?.id;
     const { id } = req.params;
+
+    if (!restaurantId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'User does not belong to a restaurant' }
+      });
+    }
+
+    const post = await prisma.scheduledPost.findFirst({
+      where: { 
+        id: parseInt(id),
+        restaurant_id: restaurantId
+      }
+    });
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Scheduled post not found' }
+      });
+    }
 
     await prisma.scheduledPost.update({
       where: { id: parseInt(id) },

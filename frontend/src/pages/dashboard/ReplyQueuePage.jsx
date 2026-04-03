@@ -132,7 +132,7 @@ export default function ReplyQueuePage() {
     <>
     <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
       <div style={{ marginBottom: 32 }}>
-        <p style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.4)', marginBottom: 4 }}>06 — Engagement</p>
+        <p style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.4)', marginBottom: 4 }}>Engagement</p>
         <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.6rem', letterSpacing: '-0.03em', color: NAVY, lineHeight: 1 }}>AI Reply Queue</h1>
         <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.85rem', color: 'rgba(12,12,12,0.5)', marginTop: 6 }}>Review and approve AI-drafted responses to customer comments.</p>
       </div>

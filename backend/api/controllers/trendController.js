@@ -7,8 +7,13 @@ import { logger } from '../utils/logger.js';
  */
 export const getCityTrends = async (req, res, next) => {
   try {
-    // 1. Get city from URL (Fallback to 'Mumbai')
-    const cityName = req.params.cityName || 'Mumbai';
+    const cityName = (req.params.cityName || '').trim();
+    if (!cityName) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'cityName is required' }
+      });
+    }
     
     // 2. Fetch the aggregated LIVE data from the Service layer
     const feedData = await trendService.getAggregatedCityFeed(cityName);

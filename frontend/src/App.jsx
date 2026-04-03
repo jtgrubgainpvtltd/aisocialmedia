@@ -15,29 +15,19 @@ import AnalyticsPage from './pages/dashboard/AnalyticsPage'
 import HistoryPage from './pages/dashboard/HistoryPage'
 import IntegrationsPage from './pages/dashboard/IntegrationsPage'
 import ReplyQueuePage from './pages/dashboard/ReplyQueuePage'
+import NotFoundPage from './pages/NotFoundPage'
+import AppLoader from './components/ui/AppLoader'
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
   
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#F7F3EC' }}>
-        <div style={{ textAlign: 'center', fontFamily: 'Inter, sans-serif' }}>
-          <div className="spinner" style={{ border: '4px solid #E2E8F0', borderTop: '4px solid #FF503C', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-          <p style={{ color: '#475569', fontWeight: 500 }}>Loading...</p>
-        </div>
-      </div>
-    )
+    return <AppLoader title="Preparing your dashboard" subtitle="Syncing your restaurant workspace…" />
   }
   
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
-// Configure a global QueryClient:
-// - staleTime: 30s (data considered fresh for 30s, no refetch on tab focus)
-// - retry: 2 automatic retries on failed queries
-// - refetchOnWindowFocus: false (prevents noisy background refetches)
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -54,13 +44,11 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
         <Routes>
-          {/* Public routes */}
           <Route path="/"          element={<Landing />} />
           <Route path="/login"     element={<LoginChoice />} />
           <Route path="/login/restaurant" element={<RestaurantLogin />} />
           <Route path="/register"  element={<PartnerRegister />} />
 
-          {/* Protected dashboard routes */}
           <Route
             path="/dashboard"
             element={
@@ -78,10 +66,10 @@ export default function App() {
             <Route path="history"      element={<HistoryPage />} />
             <Route path="replies"      element={<ReplyQueuePage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
 
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
         </BrowserRouter>
       </AuthProvider>

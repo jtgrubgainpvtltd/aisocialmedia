@@ -2,19 +2,32 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
-// Create axios instance
+let inMemoryAccessToken = null;
+let refreshPromise = null;
+
+export const setAccessToken = (token) => {
+  inMemoryAccessToken = token;
+};
+
+export const getAccessToken = () => {
+  return inMemoryAccessToken;
+};
+
+export const clearAccessToken = () => {
+  inMemoryAccessToken = null;
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // For cookies (refresh token)
+  withCredentials: true,
 });
 
-// Request interceptor - Add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -25,30 +38,40 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor - Handle token refresh
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+    const isRefreshCall = originalRequest?.url?.includes('/auth/refresh');
 
-    // If 401 and not already retried, try to refresh token
+    if (isRefreshCall) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
-        const { data } = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
+        if (!refreshPromise) {
+          refreshPromise = axios
+            .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
 
-        localStorage.setItem('accessToken', data.data.accessToken);
+        const { data } = await refreshPromise;
+
+        setAccessToken(data.data.accessToken);
+        originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${data.data.accessToken}`;
 
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, logout user
-        localStorage.removeItem('accessToken');
+        clearAccessToken();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -58,8 +81,6 @@ api.interceptors.response.use(
   }
 );
 
-// ==================== Auth APIs ====================
-
 export const auth = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
@@ -67,8 +88,6 @@ export const auth = {
   getCurrentUser: () => api.get('/auth/me'),
   refreshToken: () => api.post('/auth/refresh'),
 };
-
-// ==================== Restaurant APIs ====================
 
 export const restaurant = {
   get: () => api.get('/restaurant'),
@@ -81,8 +100,6 @@ export const restaurant = {
   deleteAsset: (id) => api.delete(`/restaurant/assets/${id}`),
 };
 
-// ==================== Content APIs ====================
-
 export const content = {
   generate: (data) => api.post('/content/generate', data),
   getHistory: (params) => api.get('/content/history', { params }),
@@ -90,13 +107,10 @@ export const content = {
   getById: (id) => api.get(`/content/${id}`),
   delete: (id) => api.delete(`/content/${id}`),
 
-  // Test endpoints (auth required + strict rate limit on backend)
   testCaption: (data) => api.post('/content/test-caption', data),
   testImage: (data) => api.post('/content/test-image', data),
   testFull: (data) => api.post('/content/test-full', data),
 };
-
-// ==================== Posts APIs ====================
 
 export const posts = {
   schedule: (data) => api.post('/posts/schedule', data),
@@ -106,12 +120,11 @@ export const posts = {
   publishNow: (data) => api.post('/posts/publish', data),
 };
 
-// ==================== Integrations APIs ====================
-
 export const integrations = {
   getAll: () => api.get('/integrations'),
   connectMeta: (data) => api.post('/integrations/connect-meta', data),
   getMetaOAuthUrl: () => api.get('/integrations/meta/oauth-url'),
+  getMetaOAuthPages: () => api.get('/integrations/meta/oauth-pages'),
   completeMetaOAuth: (data) => api.post('/integrations/meta/complete-oauth', data),
   testAll: () => api.get('/integrations/test-all'),
   testUserToken: () => api.get('/integrations/test-user-token'),

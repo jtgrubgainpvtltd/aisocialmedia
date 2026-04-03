@@ -1,6 +1,26 @@
 import { verifyAccessToken } from '../utils/jwt.js';
 import prisma from '../../prisma/client.js';
 
+const USER_CACHE_TTL_MS = 30 * 1000;
+const userCache = new Map();
+
+function getCachedUser(userId) {
+  const cached = userCache.get(userId);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    userCache.delete(userId);
+    return null;
+  }
+  return cached.user;
+}
+
+function setCachedUser(userId, user) {
+  userCache.set(userId, {
+    user,
+    expiresAt: Date.now() + USER_CACHE_TTL_MS,
+  });
+}
+
 /**
  * Authentication middleware - Verifies JWT token
  * Attaches user object to req.user if valid
@@ -19,7 +39,8 @@ export const authenticate = async (req, res, next) => {
     const token = authHeader.substring(7);
     const decoded = verifyAccessToken(token);
 
-    const user = await prisma.user.findUnique({
+    const cachedUser = getCachedUser(decoded.id);
+    const user = cachedUser || await prisma.user.findUnique({
       where: { id: decoded.id },
       select: {
         id: true,
@@ -46,6 +67,9 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
+    if (!cachedUser) {
+      setCachedUser(decoded.id, user);
+    }
     req.user = user;
     next();
   } catch (error) {

@@ -4,6 +4,8 @@ import { decrypt } from '../utils/encryption.js';
 import * as metaService from '../services/metaService.js';
 import logger from '../utils/logger.js';
 
+const schedulerVerboseLogs = process.env.SCHEDULER_VERBOSE_LOGS === 'true';
+
 /**
  * Checks if a scheduled post is due based on its scheduled_date and scheduled_time.
  * scheduled_date is a DateTime in the DB; scheduled_time is a "HH:MM" string.
@@ -19,14 +21,14 @@ function isPostDue(scheduledDate, scheduledTime) {
   return now >= target;
 }
 
-/**
- * Core job: find all PENDING scheduled posts whose time has arrived and publish them.
- */
 async function processDuePosts() {
-  logger.info('[Scheduler] Running scheduled post processor...');
+  if (schedulerVerboseLogs) {
+    logger.info('[Scheduler] Running scheduled post processor...');
+  }
 
   try {
-    // Fetch all PENDING posts that have not been deleted
+    const BATCH_SIZE = 50;
+
     const pendingPosts = await prisma.scheduledPost.findMany({
       where: {
         status: 'PENDING',
@@ -39,23 +41,49 @@ async function processDuePosts() {
           },
         },
       },
+      take: BATCH_SIZE,
+      orderBy: { scheduled_date: 'asc' },
     });
 
     if (pendingPosts.length === 0) {
-      logger.info('[Scheduler] No pending posts found.');
+      if (schedulerVerboseLogs) {
+        logger.info('[Scheduler] No pending posts found.');
+      }
       return;
     }
 
-    logger.info(`[Scheduler] Found ${pendingPosts.length} pending post(s). Checking due dates...`);
+    if (schedulerVerboseLogs) {
+      logger.info(`[Scheduler] Found ${pendingPosts.length} pending post(s). Checking due dates...`);
+    }
 
     for (const post of pendingPosts) {
       if (!isPostDue(post.scheduled_date, post.scheduled_time)) {
-        continue; // Not yet time
+        continue;
       }
 
-      logger.info(`[Scheduler] Processing post ID ${post.id} for platform ${post.platform}`);
+      if (schedulerVerboseLogs) {
+        logger.info(`[Scheduler] Processing post ID ${post.id} for platform ${post.platform}`);
+      }
 
-      // Find matching integration for this platform
+      const updateResult = await prisma.scheduledPost.updateMany({
+        where: {
+          id: post.id,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'PROCESSING',
+          iud_flag: 'U',
+          updated_by: 'system',
+        },
+      });
+
+      if (updateResult.count === 0) {
+        if (schedulerVerboseLogs) {
+          logger.info(`[Scheduler] Post ID ${post.id} already being processed by another instance.`);
+        }
+        continue;
+      }
+
       const integration = post.restaurant.integrations.find(
         (i) => i.platform === post.platform && i.connected && i.access_token
       );
@@ -75,7 +103,6 @@ async function processDuePosts() {
         continue;
       }
 
-      // Decrypt saved page access token
       let pageAccessToken;
       try {
         pageAccessToken = decrypt(integration.access_token);
@@ -93,12 +120,28 @@ async function processDuePosts() {
         continue;
       }
 
-      const accountInfo = integration.account_handle
-        ? JSON.parse(integration.account_handle)
-        : {};
+      let accountInfo = {};
+      try {
+        accountInfo = integration.account_handle
+          ? JSON.parse(integration.account_handle)
+          : {};
+      } catch (parseError) {
+        logger.error(`[Scheduler] Failed to parse account_handle for post ID ${post.id}`, { 
+          error: parseError.message 
+        });
+        await prisma.scheduledPost.update({
+          where: { id: post.id },
+          data: {
+            status: 'FAILED',
+            error_message: 'Invalid account configuration. Please reconnect your Meta account.',
+            iud_flag: 'U',
+            updated_by: 'system',
+          },
+        });
+        continue;
+      }
 
       try {
-        // Publish via Meta Graph API
         const publishResult = await metaService.publishToPlatform({
           platform: post.platform,
           caption: post.caption,
@@ -108,7 +151,6 @@ async function processDuePosts() {
           instagramAccountId: accountInfo.instagramAccountId,
         });
 
-        // Record in published_posts
         const publishedPost = await prisma.publishedPost.create({
           data: {
             restaurant_id: post.restaurant_id,
@@ -129,7 +171,6 @@ async function processDuePosts() {
           },
         });
 
-        // Mark scheduled post as PUBLISHED
         await prisma.scheduledPost.update({
           where: { id: post.id },
           data: {
@@ -140,7 +181,6 @@ async function processDuePosts() {
           },
         });
 
-        // Update integration's last_synced_at
         await prisma.integration.update({
           where: { id: integration.id },
           data: {
@@ -155,7 +195,6 @@ async function processDuePosts() {
       } catch (publishErr) {
         logger.error(`[Scheduler] ❌ Failed to publish post ID ${post.id}`, { error: publishErr.message });
 
-        // Mark as FAILED with the error message for visibility
         await prisma.scheduledPost.update({
           where: { id: post.id },
           data: {
@@ -168,26 +207,27 @@ async function processDuePosts() {
       }
     }
 
-    logger.info('[Scheduler] Processor run complete.');
+    if (schedulerVerboseLogs) {
+      logger.info('[Scheduler] Processor run complete.');
+    }
 
   } catch (error) {
     logger.error('[Scheduler] Fatal error during scheduled post processing', { error: error.message });
   }
 }
 
-// Initialise the cron job.
-// Runs every minute: '* * * * *'
-// For production with lower frequency, change to: '0 */5 * * * *' (every 5 min)
 export function startJobScheduler() {
-  logger.info('[Scheduler] Initialising background job scheduler (runs every minute)...');
+  if (schedulerVerboseLogs) {
+    logger.info('[Scheduler] Initialising background job scheduler (runs every minute)...');
+  }
 
-  // Run once immediately on boot so posts scheduled "right now" don't wait a full minute
   processDuePosts();
 
-  // Then run every minute
   cron.schedule('* * * * *', () => {
     processDuePosts();
   });
 
-  logger.info('[Scheduler] ✅ Background job scheduler is active.');
+  if (schedulerVerboseLogs) {
+    logger.info('[Scheduler] ✅ Background job scheduler is active.');
+  }
 }

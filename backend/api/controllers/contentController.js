@@ -38,7 +38,16 @@ export const generateContent = async (req, res, next) => {
 
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
-      include: { restaurant: true },
+      include: {
+        restaurant: {
+          include: {
+            brandAssets: {
+              where: { iud_flag: { not: 'D' } },
+              orderBy: { created_on: 'desc' }
+            }
+          }
+        },
+      },
     });
 
     if (!userRecord || !userRecord.restaurant) {
@@ -54,9 +63,20 @@ export const generateContent = async (req, res, next) => {
     }
 
     const restaurant = userRecord.restaurant;
+    const restaurantLogoUrl = restaurant.logo_url || restaurant.brandAssets?.find((asset) => asset.asset_type === 'LOGO' && asset.file_url)?.file_url || null;
     let caption, imageUrl, metadata;
 
     if (shouldGenerateImage) {
+      if (!restaurant.name || !restaurant.cuisine_type || !restaurant.city || !restaurantLogoUrl) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message:
+              "Restaurant name, cuisine, city, and a uploaded logo are mandatory before generating branded images.",
+          },
+        });
+      }
+
       const result = await openaiService.generateFullContent({
         restaurantName: restaurant.name || restaurantName,
         restaurantType: restaurant.cuisine_type || restaurantType,
@@ -64,7 +84,9 @@ export const generateContent = async (req, res, next) => {
         area: restaurant.area,
         tone: restaurant.brand_tone || tone,
         signatureDishes: restaurant.signature_dishes,
-        restaurantLogoUrl: restaurant.logo_url, // Pass logo URL for compositing
+        restaurantLogoUrl,
+        restaurantBrandColor: restaurant.brand_color,
+        restaurantBrandStory: restaurant.brand_story,
         language: language || "BILINGUAL",
         occasion,
         dishName,
@@ -167,6 +189,9 @@ export const getContentHistory = async (req, res, next) => {
     const userId = req.user.id;
     const { limit = 50, offset = 0 } = req.query;
 
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100); // Min 1, Max 100
+    const safeOffset = Math.max(parseInt(offset) || 0, 0); // Min 0
+
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
       include: { restaurant: true },
@@ -184,8 +209,8 @@ export const getContentHistory = async (req, res, next) => {
         iud_flag: { not: "D" },
       },
       orderBy: { created_on: "desc" },
-      take: parseInt(limit),
-      skip: parseInt(offset),
+      take: safeLimit,
+      skip: safeOffset,
     });
 
     res.json({ success: true, data: { content } });
@@ -239,8 +264,21 @@ export const getContentStats = async (req, res, next) => {
 export const getContentById = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const restaurantId = req.user.restaurant?.id;
+
+    if (!restaurantId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'User does not belong to a restaurant' }
+      });
+    }
+
     const content = await prisma.generatedContent.findFirst({
-      where: { id: parseInt(id), iud_flag: { not: "D" } },
+      where: { 
+        id: parseInt(id),
+        restaurant_id: restaurantId,
+        iud_flag: { not: "D" }
+      },
       include: {
         restaurant: { select: { name: true, city: true, cuisine_type: true } },
       },
@@ -307,9 +345,6 @@ export const deleteContent = async (req, res, next) => {
   }
 };
 
-// ---------------------------------------------------------
-//  Test endpoints (no auth needed; rate limited on upper layer)
-// ---------------------------------------------------------
 export const testCaption = async (req, res, next) => {
   try {
     const {
@@ -368,7 +403,6 @@ export const testImage = async (req, res, next) => {
       prompt: imagePrompt,
       size: size || "1024x1024",
       quality: quality || "high",
-      // NOTE: "style" is a DALL-E 3 parameter. gpt-image-1 does not support it.
     });
     res.json({
       success: true,

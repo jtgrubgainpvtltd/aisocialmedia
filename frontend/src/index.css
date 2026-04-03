@@ -239,3 +239,21 @@ input:focus {
 .scheduler-table tr:hover td {
   background: rgba(0, 122, 100, 0.02);
 }
+
+.app-loader-ring {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(0, 122, 100, 0.2);
+  border-top-color: var(--teal);
+  animation: appLoaderSpin 0.9s linear infinite;
+}
+
+@keyframes appLoaderSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

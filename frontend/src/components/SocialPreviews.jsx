@@ -13,7 +13,7 @@ const Avatar = ({ url, fallback, size = 32, isDark = false }) => (
     boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
   }}>
     {url
-      ? <img src={url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ? <img src={url} alt={`${fallback || 'Restaurant'} profile logo`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       : <span style={{ fontSize: size * 0.42, fontWeight: 700, color: isDark ? '#efefef' : '#555' }}>
           {fallback?.[0]?.toUpperCase() || 'R'}
         </span>
@@ -37,7 +37,7 @@ const ImageSlot = ({ imageUrl, aspectRatio = '1 / 1', generating, isDark = false
       </div>
     ) : imageUrl ? (
       <>
-        <img src={imageUrl} alt="Generated poster" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        <img src={imageUrl} alt="Generated social media creative" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         
         {/* Automatic Brand Overlay (Requested Fix) */}
         {restaurantLogoUrl && (
@@ -58,7 +58,7 @@ const ImageSlot = ({ imageUrl, aspectRatio = '1 / 1', generating, isDark = false
             border: '1px solid rgba(255,255,255,0.4)',
             overflow: 'hidden'
           }}>
-            <img src={restaurantLogoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <img src={restaurantLogoUrl} alt="Restaurant logo watermark" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
         )}
       </>
@@ -153,7 +153,7 @@ export const PreviewInstagramStory = ({ imageUrl, restaurantName, avatarUrl, gen
         <span style={{ fontSize: 13, color: '#888', animation: 'pulse 2s infinite' }}>Generating…</span>
       </div>
     ) : imageUrl ? (
-      <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Story" />
+      <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Instagram story preview creative" />
     ) : (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a1a1a' }}>
         <span style={{ fontSize: 13, color: '#555' }}>Story Preview</span>

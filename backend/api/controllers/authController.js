@@ -1,12 +1,55 @@
 import * as authService from '../services/authService.js';
 import { body, validationResult } from 'express-validator';
 
+const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+const allowedSameSite = new Set(['strict', 'lax', 'none']);
+const configuredSameSite = (process.env.AUTH_COOKIE_SAMESITE || 'lax').toLowerCase();
+const cookieSameSite = allowedSameSite.has(configuredSameSite) ? configuredSameSite : 'lax';
+const cookieSecure = process.env.AUTH_COOKIE_SECURE
+  ? process.env.AUTH_COOKIE_SECURE === 'true'
+  : process.env.NODE_ENV === 'production';
+
+const buildRefreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: cookieSecure,
+  sameSite: cookieSameSite,
+  maxAge: REFRESH_COOKIE_MAX_AGE,
+});
+
+const normalizeAuthError = (error) => {
+  const message = error?.message || '';
+  if (error?.statusCode) return error;
+
+  if (
+    message === 'Invalid email or password' ||
+    message === 'Invalid refresh token' ||
+    message === 'Refresh token expired' ||
+    message === 'Refresh token not provided' ||
+    message === 'User not found'
+  ) {
+    error.statusCode = 401;
+    return error;
+  }
+
+  if (message === 'Account is not active') {
+    error.statusCode = 403;
+    return error;
+  }
+
+  if (message === 'Registration failed. Please check your details.') {
+    error.statusCode = 409;
+    return error;
+  }
+
+  return error;
+};
+
 /**
  * Register new restaurant owner
  * POST /api/v1/auth/register
  */
 export const register = [
-  // Validation rules
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
   body('password')
     .isLength({ min: 8 })
@@ -21,7 +64,6 @@ export const register = [
 
   async (req, res, next) => {
     try {
-      // Check validation errors
       const errors = validationResult(req);
       if(!errors.isEmpty()) {
         return res.status(400).json({
@@ -48,7 +90,7 @@ export const register = [
         data: result
       });
     } catch (error) {
-      next(error);
+      next(normalizeAuthError(error));
     }
   }
 ];
@@ -75,13 +117,7 @@ export const login = [
 
       const result = await authService.login({ email, password });
 
-      // Set refresh token in HTTP-only cookie
-      res.cookie('refreshToken', result.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      res.cookie('refreshToken', result.refreshToken, buildRefreshCookieOptions());
 
       res.status(200).json({
         success: true,
@@ -92,7 +128,7 @@ export const login = [
         }
       });
     } catch (error) {
-      next(error);
+      next(normalizeAuthError(error));
     }
   }
 ];
@@ -100,6 +136,7 @@ export const login = [
 /**
  * Refresh access token
  * POST /api/v1/auth/refresh
+ * SECURITY: Implements refresh token rotation
  */
 export const refresh = async (req, res, next) => {
   try {
@@ -114,12 +151,16 @@ export const refresh = async (req, res, next) => {
 
     const result = await authService.refreshAccessToken(refreshToken);
 
+    res.cookie('refreshToken', result.refreshToken, buildRefreshCookieOptions());
+
     res.status(200).json({
       success: true,
-      data: result
+      data: {
+        accessToken: result.accessToken
+      }
     });
   } catch (error) {
-    next(error);
+    next(normalizeAuthError(error));
   }
 };
 
@@ -129,12 +170,15 @@ export const refresh = async (req, res, next) => {
  */
 export const logout = async (req, res, next) => {
   try {
-    const userId = req.user.id; // From auth middleware
+    const userId = req.user.id;
 
     await authService.logout(userId);
 
-    // Clear refresh token cookie
-    res.clearCookie('refreshToken');
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
+    });
 
     res.status(200).json({
       success: true,

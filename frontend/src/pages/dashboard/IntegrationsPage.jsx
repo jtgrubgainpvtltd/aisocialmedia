@@ -222,7 +222,7 @@ export default function IntegrationsPage() {
             color: "rgba(12,12,12,0.4)",
             marginBottom: 8,
           }}>
-            07 — System Connectivity
+            System Connectivity
           </p>
           <h1 style={{
             fontFamily: "Unbounded, sans-serif",

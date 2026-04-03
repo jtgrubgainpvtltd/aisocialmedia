@@ -394,20 +394,43 @@ export const handleMetaOAuthCallback = async (req, res, next) => {
     // Exchange code for access token
     const tokenData = await metaOAuthService.exchangeCodeForToken(code);
     
-    // Get long-lived token
     const longLivedToken = await metaOAuthService.getLongLivedToken(tokenData.accessToken);
 
-    // Get user's pages
     const pages = await metaOAuthService.getUserPagesWithTokens(longLivedToken.accessToken);
 
     if (pages.length === 0) {
       return res.redirect(`${clientUrl}/dashboard/integrations?error=No Facebook pages found. Please create a Facebook page first.`);
     }
 
-    // For now, redirect to integration page with success and let user select page
-    // Store token temporarily in session or pass via secure parameter
-    const successUrl = `${clientUrl}/dashboard/integrations?oauth_success=true&temp_token=${encodeURIComponent(longLivedToken.accessToken)}`;
-    
+    const sessionId = crypto.randomBytes(32).toString('hex');
+    const sessionData = {
+      accessToken: longLivedToken.accessToken,
+      expiresIn: longLivedToken.expiresIn,
+      pages: pages,
+      createdAt: Date.now()
+    };
+
+    res.cookie('oauth_session', sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 5 * 60 * 1000, // 5 minutes
+      path: '/'
+    });
+
+    if (!global.oauthSessions) {
+      global.oauthSessions = new Map();
+    }
+    global.oauthSessions.set(sessionId, sessionData);
+
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    for (const [sid, data] of global.oauthSessions.entries()) {
+      if (data.createdAt < tenMinutesAgo) {
+        global.oauthSessions.delete(sid);
+      }
+    }
+
+    const successUrl = `${clientUrl}/dashboard/integrations?oauth_success=true`;
     res.redirect(successUrl);
 
   } catch (error) {
@@ -418,18 +441,67 @@ export const handleMetaOAuthCallback = async (req, res, next) => {
 };
 
 /**
+ * Get available OAuth pages from server-side session
+ * GET /api/v1/integrations/meta/oauth-pages
+ */
+export const getOAuthPages = async (req, res, next) => {
+  try {
+    const sessionId = req.cookies.oauth_session;
+    if (!sessionId || !global.oauthSessions || !global.oauthSessions.has(sessionId)) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'OAuth session expired or invalid. Please reconnect.' }
+      });
+    }
+
+    const sessionData = global.oauthSessions.get(sessionId);
+    const pages = Array.isArray(sessionData.pages) ? sessionData.pages : [];
+
+    const sanitizedPages = pages.map((page) => ({
+      pageId: page.pageId,
+      pageName: page.pageName,
+      instagramAccountId: page.instagramAccountId,
+      instagramUsername: page.instagramUsername
+    }));
+
+    res.json({
+      success: true,
+      data: { pages: sanitizedPages }
+    });
+  } catch (error) {
+    logger.error('Error getting OAuth pages', { error: error.message });
+    next(error);
+  }
+};
+
+/**
  * Complete Meta OAuth connection with selected page
  * POST /api/v1/integrations/meta/complete-oauth
  */
 export const completeMetaOAuth = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { userAccessToken, selectedPageId, platform } = req.body;
+    const { selectedPageId, platform } = req.body;
 
-    if (!userAccessToken || !selectedPageId || !platform) {
+    const sessionId = req.cookies.oauth_session;
+    if (!sessionId || !global.oauthSessions || !global.oauthSessions.has(sessionId)) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'OAuth session expired or invalid. Please reconnect.' }
+      });
+    }
+
+    const sessionData = global.oauthSessions.get(sessionId);
+    const userAccessToken = sessionData.accessToken;
+    const pages = sessionData.pages;
+
+    global.oauthSessions.delete(sessionId);
+    res.clearCookie('oauth_session');
+
+    if (!selectedPageId || !platform) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Missing required parameters: userAccessToken, selectedPageId, platform' }
+        error: { message: 'Missing required parameters: selectedPageId, platform' }
       });
     }
 
@@ -453,8 +525,7 @@ export const completeMetaOAuth = async (req, res, next) => {
       });
     }
 
-    // Get pages with the user token
-    const pages = await metaOAuthService.getUserPagesWithTokens(userAccessToken);
+    // Use pages from session data (already fetched during callback)
     const selectedPage = pages.find(p => p.pageId === selectedPageId);
 
     if (!selectedPage) {
@@ -532,5 +603,6 @@ export default {
   connectMeta,
   getMetaOAuthUrl,
   handleMetaOAuthCallback,
+  getOAuthPages,
   completeMetaOAuth
 };

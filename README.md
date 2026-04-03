@@ -9,7 +9,7 @@
 
 ## 🚀 Overview
 
-GrubGain shifts the burden of marketing off the restaurateur's shoulders. By tightly integrating with **OpenAI's gpt-image-1** and **Meta's Graph API**, GrubGain provides an entire marketing agency inside a single dashboard.
+GrubGain shifts the burden of marketing off the restaurateur's shoulders. By tightly integrating with **OpenAI's gpt-image-1.5** and **Meta's Graph API**, GrubGain provides an entire marketing agency inside a single dashboard.
 
 From analyzing local festivals to automatically drafting high-converting Facebook and Instagram posts, scheduling them for maximum reach, and actively responding to customer comments—GrubGain handles it all autonomously.
 
@@ -17,297 +17,251 @@ From analyzing local festivals to automatically drafting high-converting Faceboo
 
 ### 🌆 Real-Time City Feed Intelligence
 
-GrubGain actively analyzes the local environment of the restaurant. It pulls data on the weather, upcoming local sporting events, and cultural festivals to dynamically suggest highly-relevant marketing triggers. E.g., _"It's raining in Mumbai today—promote your hot chocolate and pakoras!"_
+GrubGain actively analyzes the local environment of the restaurant. It pulls data on weather, local sporting events, and cultural festivals to dynamically suggest relevant marketing triggers.
 
 ### 🤖 AI Content Studio
 
 A state-of-the-art content generation suite:
 
-- **Native Image Generation:** Uses **gpt-image-1** for professional-quality marketing posters with crisp, perfect typography
-- **Bilingual Capabilities:** Generates compelling captions simultaneously in English and Hindi
-- **Brand Voice Styling:** Instructs the AI to adopt specific tones (Modern, Elegant, Fun, Casual, Professional)
+- **Native Image Generation:** Uses **gpt-image-1.5** for professional-quality marketing posters with crisp typography
+- **Bilingual Capabilities:** Generates compelling captions in English and Hindi
+- **Brand Voice Styling:** Supports tones like Modern, Elegant, Fun, Casual, and Professional
 - **Campaign Types:** General Branding, Festival Greetings, Discount Offers, Menu Highlights
-- **Automated Hashtags & Emojis:** Leverages advanced parsing to seamlessly embed optimized hashtags
-- **High-Quality Output:** Always uses 'high' quality for production-ready marketing assets
+- **Hashtag & Emoji Controls:** Flexible hashtag and emoji generation options
+- **High-Quality Output:** Uses high-quality image settings for production-ready assets
 
 ### 📅 Smart Scheduling & Predictive Analytics
 
-- **Predictive "Best Time to Post":** analyzes historical engagement metrics directly from the restaurant’s past published posts to highlight the exact hour blocks that yield the most views.
-- **Direct Meta Publishing:** Schedule posts natively to Facebook and Instagram without ever leaving the GrubGain dashboard.
+- **Best Time to Post:** Uses historical engagement to suggest stronger posting windows
+- **Direct Meta Publishing:** Publish/schedule to connected social platforms from the dashboard
 
 ### 💬 Auto-Reply AI (Meta Webhook Integration)
 
-- Evaluates incoming comments in real-time
-- Automatically classifies comments using GPT-4o-mini as `POSITIVE`, `COMPLAINT`, or `QUESTION`
-- Drafts contextual, personalized replies within seconds
-- Queue system for 1-click approval and native posting back to Meta
+- Evaluates incoming comments in near real time
+- Classifies comments using GPT-4o-mini (`POSITIVE`, `COMPLAINT`, `QUESTION`, etc.)
+- Drafts contextual replies for approval queue workflows
+- Supports one-click approval and native posting back to Meta
 
-### ✂️ Premium Content Cropping
+### ✂️ Content Cropping & Preview
 
-- Sophisticated front-end canvas cropping tool (`react-easy-crop`)
-- Forces images into social-ready aspect ratios: `1:1 (Square)`, `9:16 (Story)`, and `16:9 (Landscape)`
-- Real-time preview before publishing
+- Front-end cropping workflow for social-friendly output
+- Supports common social aspect ratios and previews before scheduling
 
 ---
 
 ## 🛠 Tech Stack
 
-GrubGain is a robust monorepo built using modern, type-safe, and highly-performant technologies:
+GrubGain is a monorepo built with modern production tooling.
 
 ### **Frontend (Client)**
 
-- **Framework:** React 18 powered by Vite
-- **State Management:** `@tanstack/react-query` for high-performance server-state synchronization and caching
-- **Routing:** `react-router-dom` with URL state management
-- **Styling:** TailwindCSS with custom CSS tokens for glassmorphism UI
-- **Components:** `react-easy-crop` for image manipulation, customized animations, and visual dashboards
+- **Framework:** React 18 + Vite
+- **State/Data:** `@tanstack/react-query`
+- **Routing:** `react-router-dom`
+- **HTTP:** `axios`
 
 ### **Backend (API Engine)**
 
 - **Runtime:** Node.js + Express.js
-- **Database:** PostgreSQL managed by **Prisma ORM**
-- **Security:** JWT-based authentication (`jsonwebtoken`), `bcryptjs`, helmet, CORS
-- **Logging:** `winston` with structured logging
-- **File Handling:** `multer` for uploads
-- **Integrations:**
-  - `openai` SDK for GPT-4o-mini (captions) and gpt-image-1 (posters)
-  - Meta Graph API for Facebook/Instagram publishing
-  - Google Business Profile API integration
+- **Database:** PostgreSQL + Prisma ORM
+- **Security:** JWT auth, `helmet`, CORS, cookie-based refresh flow
+- **Logging:** `winston`
+- **Integrations:** OpenAI, Meta Graph APIs, Google services
 
 ---
 
 ## 📂 Repository Structure
-
-The repository is structured as a standard monorepo:
 
 ```text
 GrubGain/
 ├── backend/                     # Express.js REST API
 │   ├── api/
 │   │   ├── controllers/         # Route logic & request handlers
-│   │   ├── jobs/                # Cron schedulers for automated tasks
-│   │   ├── middleware/          # JWT Auth, error handlers, rate limiting
-│   │   ├── routes/              # Express route definitions
-│   │   ├── services/            # OpenAI / Meta API integrations
-│   │   └── utils/               # Winston loggers, helpers
-│   ├── prisma/                  # Schema and database client
-│   │   ├── schema.prisma        # Database schema definition
-│   │   └── client.js            # Prisma client instance
-│   ├── public/uploads/          # User-generated images (gitignored)
-│   ├── server.js                # Application entry point
-│   └── .env.example             # Template for environment variables
+│   │   ├── jobs/                # Cron schedulers
+│   │   ├── middleware/          # Auth, errors, rate limiting
+│   │   ├── routes/              # Express routes
+│   │   ├── services/            # OpenAI / Meta / Google services
+│   │   └── utils/               # Logger, crypto, helpers
+│   ├── prisma/                  # Schema, migrations, seed
+│   ├── public/uploads/          # Generated & uploaded media
+│   ├── server.js                # API entry point
+│   └── .env.example             # Backend env template
 │
-├── frontend/                    # React Vite Client
+├── frontend/                    # React Vite client
 │   ├── src/
-│   │   ├── api/                 # Axios client mapped to backend
-│   │   ├── components/          # Reusable UI components
-│   │   │   └── AIContentStudio.jsx  # Main content generation interface
-│   │   ├── context/             # React Contexts (AuthContext)
-│   │   ├── pages/               # View-level layouts
-│   │   │   └── dashboard/       # Dashboard pages (History, Analytics, etc.)
-│   │   ├── constants/           # Platform configs, tone options
-│   │   └── utils/               # Helper functions
-│   ├── public/                  # Static assets
-│   └── index.html               # HTML entry point
+│   │   ├── api/                 # API client wrappers
+│   │   ├── components/          # Reusable UI
+│   │   ├── context/             # Auth context
+│   │   ├── pages/               # Route-level pages
+│   │   └── utils/               # Utility helpers
+│   └── .env.example             # Frontend env template
 │
-└── README.md                    # You are here!
+└── README.md
 ```
 
 ---
 
 ## 🚀 Getting Started
 
-Follow these steps to run the GrubGain engine locally.
-
 ### Prerequisites
 
 - **Node.js:** v18 or higher
 - **Database:** PostgreSQL instance (local or cloud)
 - **API Keys:**
-  - OpenAI API key with gpt-image-1 access
-  - Meta Developer App with Graph API permissions
-  - (Optional) Google Cloud credentials for Google Business integration
+  - OpenAI API key
+  - Meta app credentials (for integrations/webhooks)
+  - Optional Google credentials (for Google routes/features)
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/grubgain.git
-cd grubgain
+git clone https://github.com/jtgrubgainpvtltd/aisocialmedia.git
+cd aisocialmedia
 ```
 
 ### 2. Backend Setup
 
-Navigate to the backend directory:
-
 ```bash
 cd backend
 npm install
+copy .env.example .env
 ```
 
-Copy the example environment file and configure your keys:
+Fill `backend/.env`, then run:
 
 ```bash
-cp .env.example .env
-```
-
-**Required environment variables in `.env`:**
-
-```env
-# Database
-DATABASE_URL="postgresql://user:password@localhost:5432/grubgain"
-
-# JWT Authentication
-JWT_SECRET="your-super-secret-jwt-key"
-JWT_REFRESH_SECRET="your-refresh-secret"
-
-# OpenAI
-OPENAI_API_KEY="sk-proj-..."
-
-# Meta (Facebook/Instagram)
-META_APP_ID="your-app-id"
-META_APP_SECRET="your-app-secret"
-META_WEBHOOK_VERIFY_TOKEN="your-custom-verify-token"
-
-# Google Services
-GOOGLE_SERVICES_API_KEY="your-google-api-key"
-
-# Server
-PORT=5000
-NODE_ENV=development
-CLIENT_URL=http://localhost:5173
-```
-
-Apply the Prisma schema to your database:
-
-```bash
+npm run db:generate
 npx prisma db push
-```
-
-(Optional) Seed the database with sample data:
-
-```bash
-npx prisma db seed
-```
-
-Start the backend server:
-
-```bash
 npm run dev
 ```
 
-_API will launch at `http://localhost:5000`_
+API runs at `http://localhost:5000`.
 
 ### 3. Frontend Setup
 
-Open a new terminal and navigate to the frontend:
-
 ```bash
-cd frontend
+cd ../frontend
 npm install
-```
-
-Create frontend `.env` file:
-
-```bash
-echo "VITE_API_URL=http://localhost:5000/api/v1" > .env
-```
-
-Start the Vite development server:
-
-```bash
+copy .env.example .env
 npm run dev
 ```
 
-Visit the application at **`http://localhost:5173`**
+App runs at `http://localhost:5173`.
 
 ---
 
-## 📱 Meta Webhook Setup (for Auto-Reply)
+## ⚙️ Environment Variables
 
-To receive real-time comment notifications from Facebook/Instagram:
+### Backend (`backend/.env`)
 
-1. **Use ngrok to expose your local server:**
+Use `backend/.env.example` as source-of-truth. Key groups:
 
-   ```bash
-   ngrok http 5000
-   ```
+- Server: `NODE_ENV`, `PORT`, `CLIENT_URL`, `TRUST_PROXY`
+- JWT/Auth: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`
+- Cookie policy: `AUTH_COOKIE_SAMESITE`, `AUTH_COOKIE_SECURE`
+- DB/Crypto: `DATABASE_URL`, `ENCRYPTION_KEY`, `ENCRYPTION_IV`
+- OpenAI: `OPENAI_API_KEY`
+- Meta: `META_APP_ID`, `META_APP_SECRET`, `META_OAUTH_REDIRECT_URI`, `META_WEBHOOK_VERIFY_TOKEN`
+- Optional Meta tokens: `META_USER_TOKEN`, `META_APP_TOKEN`, `META_ACCESS_TOKEN`
+- Google: `GOOGLE_SERVICES_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`
+- Upload/limits: `UPLOADS_DIR`, `MAX_FILE_SIZE`
+- Rate limiting/feature flags: `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`, `ENABLE_TEST_ENDPOINTS`
+- Logging: `LOG_LEVEL`, `PRISMA_LOG_QUERIES`, `REQUEST_LOGGING`, `SCHEDULER_VERBOSE_LOGS`
 
-2. **Configure Meta App Webhook:**
-   - Go to [Meta Developers](https://developers.facebook.com)
-   - Navigate to your app → Webhooks
-   - Add webhook URL: `https://your-ngrok-url.ngrok.io/api/v1/meta/webhook`
-   - Verify token: (use the same value as `META_WEBHOOK_VERIFY_TOKEN` in your `.env`)
-   - Subscribe to: `feed`, `comments`, `messages`
+### Frontend (`frontend/.env`)
 
-3. **Test the webhook** by posting a comment on your connected Facebook page
-
----
-
-## 🔒 Security Best Practices
-
-- ✅ **Never commit `.env` files** — they're already in `.gitignore`
-- ✅ **Rotate all API keys** if accidentally exposed
-- ✅ **Use HTTPS in production** — the app enforces secure headers via helmet
-- ✅ **Rate limiting** — all endpoints are protected (100 req/15min default)
-- ✅ **CORS** — only allows requests from `CLIENT_URL` origin
-- ✅ **JWT expiry** — tokens expire and must be refreshed
-
----
-
-## 🧪 Testing
-
-### Backend Tests
-
-```bash
-cd backend
-npm test
+```env
+VITE_API_URL=http://localhost:5000/api/v1
 ```
 
-### Frontend Tests
+---
+
+## 🧪 Scripts
+
+### Backend
 
 ```bash
-cd frontend
-npm test
+npm run dev
+npm start
+npm run db:migrate
+npm run db:deploy
+npm run db:seed
+npm run db:studio
+npm run db:generate
+npm run db:reset
 ```
 
-### Manual Testing Checklist
+### Frontend
 
-See `QUICK_REFERENCE.md` for a comprehensive testing guide including:
-
-- Image generation with sharp text
-- OAuth flow completion
-- Content history navigation
-- Scheduling and publishing
+```bash
+npm run dev
+npm run build
+npm run preview
+```
 
 ---
 
-## 📝 Recent Updates (v2.0)
+## 🔌 API Surface
 
-### Major Improvements
+Base path: `/api/v1`
 
-- ✅ **Upgraded to gpt-image-1** for native text rendering (eliminates blurry text issue)
-- ✅ **Removed image compositor pipeline** — text now rendered natively by AI
-- ✅ **Fixed CORS for image loading** — images now display correctly in dev and prod
-- ✅ **Added View & Edit button** — load any history item into Content Studio
-- ✅ **Fixed OAuth popup flow** — token now passed correctly via BroadcastChannel
-- ✅ **Enhanced security** — added ownership checks to delete operations
-- ✅ **Improved route ordering** — static routes before parameterized routes
+- `/auth`
+- `/restaurant`
+- `/content`
+- `/posts`
+- `/analytics`
+- `/trends`
+- `/integrations`
+- `/locations`
+- `/google`
+- `/replies`
+
+Health check: `GET /health`
+
+---
+
+## 📱 Meta Webhook Setup (Auto-Reply)
+
+1. Expose local backend:
+
+```bash
+ngrok http 5000
+```
+
+2. In Meta Developers → Webhooks:
+
+- Callback URL: `https://<ngrok-url>/api/v1/replies/webhook`
+- Verify token: same as `META_WEBHOOK_VERIFY_TOKEN`
+- Subscribe relevant fields for comment events
+
+3. Test by creating a comment on a connected page/post.
+
+---
+
+## 🔒 Security & Production Notes
+
+- Never commit `.env` files.
+- Use strong random JWT/encryption secrets.
+- Use HTTPS in production and set `AUTH_COOKIE_SECURE=true`.
+- Configure `AUTH_COOKIE_SAMESITE` to match deployment topology.
+- Keep `ENABLE_TEST_ENDPOINTS=false` in production.
+- Keep `PRISMA_LOG_QUERIES=false` unless debugging.
+
+---
+
+## ✅ V1 Push Checklist
+
+- Auth login/logout/me/refresh works
+- Browser refresh keeps authenticated session
+- Content generation works (caption + image)
+- Scheduler create/cancel/publish works
+- History “View & Edit” loads into Studio
+- Dashboard “Recent Content → View” opens Studio correctly
+- Integrations and OAuth callback flows work
+- Frontend build passes: `cd frontend && npm run build`
+
+---
 
 ## 📄 License
 
 This project is proprietary software. All rights reserved.
-
----
-
-## 💬 Support
-
-For questions, issues, or feature requests:
-
-- 📧 Email: contact@grubgain.com
-
----
-
-<div align="center">
-  <p>Built with ❤️ for restaurant owners who deserve powerful marketing tools</p>
-  <p><strong>GrubGain</strong> — Your AI Marketing Partner</p>
-</div>

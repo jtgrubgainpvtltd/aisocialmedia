@@ -168,6 +168,16 @@ export const uploadAsset = async (req, res, next) => {
       }
     });
 
+    if ((req.body.asset_type || 'LOGO') === 'LOGO') {
+      await prisma.restaurant.update({
+        where: { id: user.restaurant.id },
+        data: {
+          logo_url: result.secure_url,
+          updated_by: userId.toString()
+        }
+      });
+    }
+
     logger.info('Brand asset uploaded', { assetId: asset.id });
 
     res.json({
@@ -228,10 +238,21 @@ export const getAssets = async (req, res, next) => {
 export const deleteAsset = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const restaurantId = req.user.restaurant?.id;
     const { id } = req.params;
 
-    const asset = await prisma.brandAsset.findUnique({
-      where: { id: parseInt(id) }
+    if (!restaurantId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'User does not belong to a restaurant' }
+      });
+    }
+
+    const asset = await prisma.brandAsset.findFirst({
+      where: { 
+        id: parseInt(id),
+        restaurant_id: restaurantId
+      }
     });
 
     if (!asset) {
