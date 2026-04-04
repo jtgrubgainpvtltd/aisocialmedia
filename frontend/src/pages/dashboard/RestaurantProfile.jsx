@@ -9,6 +9,7 @@ import {
   DetailItem,
   FormField,
 } from './RestaurantProfile.helpers'
+import { resolveMediaUrl } from '../../utils/mediaUrl'
 
 const TEAL = '#007A64'
 const NAVY = '#1a2332'
@@ -294,7 +295,7 @@ export default function RestaurantProfile() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: 10 }}>
                       {referencePhotos.slice(0, 6).map(asset => (
                         <div key={asset.id} style={{ aspectRatio: '1 / 1', borderRadius: 12, border: '1px solid rgba(12,12,12,0.08)', overflow: 'hidden', background: 'rgba(12,12,12,0.03)' }}>
-                          <img src={asset.file_url} alt={asset.file_name || 'Reference photo'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <img src={resolveMediaUrl(asset.file_url)} alt={asset.file_name || 'Reference photo'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         </div>
                       ))}
                     </div>

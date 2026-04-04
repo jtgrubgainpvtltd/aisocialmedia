@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { content, posts } from "../../api/client";
 import { useToast, ToastContainer } from "../../components/Toast";
 import QueryState from "../../components/ui/QueryState";
+import { resolveMediaUrl } from "../../utils/mediaUrl";
 
 const TEAL = "#007A64";
 const NAVY = "#1a2332";
@@ -38,7 +39,7 @@ export default function HistoryPage() {
       (c.caption_english || "").substring(0, 60) +
       ((c.caption_english || "").length > 60 ? "..." : ""),
     fullCaption: c.caption_english || "",
-    imageUrl: c.image_url || null,
+    imageUrl: c.image_url ? resolveMediaUrl(c.image_url) : null,
     publishedDate: new Date(c.created_on).toLocaleDateString("en-IN", {
       month: "short",
       day: "numeric",
@@ -71,7 +72,7 @@ export default function HistoryPage() {
         ? `${p.caption.substring(0, 60)}${p.caption.length > 60 ? "..." : ""}`
         : "Published post"),
     fullCaption: p.caption || "",
-    imageUrl: p.image_url || null,
+    imageUrl: p.image_url ? resolveMediaUrl(p.image_url) : null,
     publishedDate: p.published_date
       ? new Date(p.published_date).toLocaleDateString("en-IN", {
           month: "short",

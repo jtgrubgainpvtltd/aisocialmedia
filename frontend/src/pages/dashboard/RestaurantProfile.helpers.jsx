@@ -1,3 +1,5 @@
+import { resolveMediaUrl } from '../../utils/mediaUrl'
+
 const NAVY = '#1a2332'
 
 export const inputStyle = {
@@ -81,7 +83,8 @@ export const mapRestaurantToForm = (restaurantData = {}) => ({
 
 export const getLogoUrl = (restaurantData, assets) => {
   const logoAsset = assets?.find((asset) => asset.asset_type === 'LOGO' && asset.file_url)
-  return logoAsset?.file_url || restaurantData?.logo_url || ''
+  const raw = logoAsset?.file_url || restaurantData?.logo_url || ''
+  return raw ? resolveMediaUrl(raw) : ''
 }
 
 export const DetailItem = ({ label, value }) => (
