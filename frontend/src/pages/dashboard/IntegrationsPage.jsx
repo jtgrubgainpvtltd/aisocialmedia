@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { integrations } from "../../api/client";
 import { useToast, ToastContainer } from "../../components/Toast";
+import { useIsSmallScreen } from "../../utils/useIsSmallScreen";
 
 const TEAL = "#007A64";
 const NAVY = "#1a2332";
@@ -24,6 +25,7 @@ const XIcon = () => (
 
 export default function IntegrationsPage() {
   const { toasts, toast } = useToast();
+  const isMobile = useIsSmallScreen();
   const [platforms, setPlatforms] = useState([
     {
       id: "instagram",
@@ -211,7 +213,7 @@ export default function IntegrationsPage() {
 
   return (
     <>
-      <div style={{ padding: "28px 32px", maxWidth: 1100 }}>
+      <div style={{ padding: isMobile ? "20px 16px" : "28px 32px", maxWidth: 1100 }}>
         {/* Header content... same as before */}
         <div style={{ marginBottom: 32 }}>
           <p style={{

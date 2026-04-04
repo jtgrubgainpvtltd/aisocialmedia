@@ -46,7 +46,11 @@ const stats = [
   { value: '4.8★', label: 'Partner Rating' },
 ]
 
+import { useIsSmallScreen } from '../utils/useIsSmallScreen'
+
 export default function Landing() {
+  const isMobile = useIsSmallScreen()
+  
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', background: '#F7F3EC', color: NAVY, overflowX: 'hidden' }}>
 
@@ -56,9 +60,9 @@ export default function Landing() {
         background: 'rgba(247,243,236,0.92)',
         backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(12,12,12,0.08)',
-        padding: '0 48px',
+        padding: isMobile ? '0 16px' : '0 48px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        height: 64,
+        height: isMobile ? 60 : 64,
       }}>
         <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={BRANDING.assets.logoMark} alt="GrubGain logo" style={{ width: 36, height: 36, flexShrink: 0 }} />
@@ -71,18 +75,18 @@ export default function Landing() {
             </div>
           </div>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
           <Link to="/login" style={{
-            fontFamily: 'Space Mono, monospace', fontSize: '0.65rem', letterSpacing: '0.08em',
+            fontFamily: 'Space Mono, monospace', fontSize: isMobile ? '0.55rem' : '0.65rem', letterSpacing: '0.08em',
             color: NAVY, textDecoration: 'none', textTransform: 'uppercase',
-            padding: '8px 18px', borderRadius: 6,
+            padding: isMobile ? '6px 12px' : '8px 18px', borderRadius: 6,
             border: '1px solid rgba(26,35,50,0.2)',
             transition: 'all 0.15s',
           }}>Login</Link>
           <Link to="/register" style={{
-            fontFamily: 'Unbounded, sans-serif', fontWeight: 700, fontSize: '0.6rem', letterSpacing: '0.06em',
+            fontFamily: 'Unbounded, sans-serif', fontWeight: 700, fontSize: isMobile ? '0.55rem' : '0.6rem', letterSpacing: '0.06em',
             color: 'white', textDecoration: 'none', textTransform: 'uppercase',
-            padding: '10px 20px', borderRadius: 6,
+            padding: isMobile ? '8px 14px' : '10px 20px', borderRadius: 6,
             background: TEAL,
             boxShadow: '0 4px 16px rgba(0,122,100,0.3)',
             transition: 'all 0.2s',
@@ -93,7 +97,7 @@ export default function Landing() {
       {/* ── HERO ── */}
       <section style={{
         minHeight: '88vh', display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        padding: '60px 48px', position: 'relative',
+        padding: isMobile ? '40px 20px' : '60px 48px', position: 'relative',
         background: `linear-gradient(135deg, #1a2332 0%, #243047 60%, #1a3a4a 100%)`,
         overflow: 'hidden',
       }}>
@@ -136,25 +140,28 @@ export default function Landing() {
 
           <h1 style={{
             fontFamily: 'Unbounded, sans-serif', fontWeight: 900,
-            fontSize: 'clamp(2.4rem, 6vw, 5.5rem)', lineHeight: 0.92,
+            fontSize: isMobile ? '2.8rem' : 'clamp(2.4rem, 6vw, 5.5rem)', lineHeight: 0.92,
             letterSpacing: '-0.04em', textTransform: 'uppercase',
-            color: 'white', marginBottom: 28,
+            color: 'white', marginBottom: 28, wordBreak: 'break-word'
           }}>
             Partner With<br />
             <span style={{ color: ORANGE }}>GrubGain</span><br />
-            <span style={{ WebkitTextStroke: '2px rgba(255,255,255,0.3)', color: 'transparent' }}>Grow Together</span>
+            <span style={{ WebkitTextStroke: isMobile ? '1px rgba(255,255,255,0.3)' : '2px rgba(255,255,255,0.3)', color: 'transparent' }}>Grow Together</span>
           </h1>
 
           <p style={{
-            fontSize: '1.05rem', fontWeight: 300, color: 'rgba(255,255,255,0.68)',
+            fontSize: isMobile ? '0.9rem' : '1.05rem', fontWeight: 300, color: 'rgba(255,255,255,0.68)',
             maxWidth: 520, lineHeight: 1.8, marginBottom: 44,
           }}>
             Join India's leading food-tech platform. AI-powered marketing, city-wise campaigns,
             automatic scheduling, and real analytics — built exclusively for restaurants.
           </p>
-          <div style={{ position: 'absolute', right: '-20px', top: -10, opacity: 0.95 }}>
-            <img src={BRANDING.assets.mascot} alt="GrubGain mascot" style={{ height: 200, filter: 'drop-shadow(0 10px 30px rgba(0,0,0,0.15))' }} />
-          </div>
+          
+          {!isMobile && (
+            <div style={{ position: 'absolute', right: '-20px', top: -10, opacity: 0.95 }}>
+              <img src={BRANDING.assets.mascot} alt="GrubGain mascot" style={{ height: 200, filter: 'drop-shadow(0 10px 30px rgba(0,0,0,0.15))' }} />
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             <Link to="/register" style={{
@@ -185,15 +192,19 @@ export default function Landing() {
 
           {/* stats row */}
           <div style={{
-            display: 'flex', gap: 0, marginTop: 72,
+            display: 'flex', gap: isMobile ? 0 : 0, marginTop: 72,
             borderTop: '1px solid rgba(255,255,255,0.08)',
             paddingTop: 32,
+            flexDirection: isMobile ? 'column' : 'row'
           }}>
             {stats.map((s, i) => (
               <div key={i} style={{
-                flex: 1, paddingRight: 32,
-                borderRight: i < stats.length - 1 ? '1px solid rgba(255,255,255,0.08)' : 'none',
-                marginRight: i < stats.length - 1 ? 32 : 0,
+                flex: 1, paddingRight: isMobile ? 0 : 32,
+                borderRight: (i < stats.length - 1 && !isMobile) ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                borderBottom: (i < stats.length - 1 && isMobile) ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                paddingBottom: isMobile && i < stats.length - 1 ? 16 : 0,
+                marginBottom: isMobile && i < stats.length - 1 ? 16 : 0,
+                marginRight: (i < stats.length - 1 && !isMobile) ? 32 : 0,
               }}>
                 <div style={{
                   fontFamily: 'Unbounded, sans-serif', fontWeight: 900,
@@ -206,11 +217,17 @@ export default function Landing() {
               </div>
             ))}
           </div>
+          
+          {isMobile && (
+            <div style={{ marginTop: 40, display: 'flex', justifyContent: 'center', opacity: 0.95 }}>
+              <img src={BRANDING.assets.mascot} alt="GrubGain mascot" style={{ height: 160, filter: 'drop-shadow(0 10px 30px rgba(0,0,0,0.15))' }} />
+            </div>
+          )}
         </div>
       </section>
 
       {/* ── FEATURES ── */}
-      <section style={{ padding: '100px 48px', background: '#F7F3EC' }}>
+      <section style={{ padding: isMobile ? '60px 20px' : '100px 48px', background: '#F7F3EC' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <div style={{
             fontFamily: 'Space Mono, monospace', fontSize: '0.6rem', letterSpacing: '0.2em',
@@ -220,9 +237,9 @@ export default function Landing() {
           </div>
           <h2 style={{
             fontFamily: 'Unbounded, sans-serif', fontWeight: 900,
-            fontSize: 'clamp(1.8rem, 4vw, 3.5rem)', lineHeight: 0.92,
+            fontSize: isMobile ? '2rem' : 'clamp(1.8rem, 4vw, 3.5rem)', lineHeight: 0.92,
             letterSpacing: '-0.04em', textTransform: 'uppercase',
-            color: NAVY, marginBottom: 56,
+            color: NAVY, marginBottom: 56, wordBreak: 'break-word'
           }}>
             Everything Your<br />
             <span style={{ color: TEAL }}>Restaurant Needs</span>
@@ -275,7 +292,7 @@ export default function Landing() {
         <div style={{
           position: 'absolute', right: '-60px', top: '50%', transform: 'translateY(-50%)',
           fontFamily: 'Unbounded, sans-serif', fontWeight: 900,
-          fontSize: 'clamp(8rem, 15vw, 18rem)', lineHeight: 1,
+          fontSize: isMobile ? '5rem' : 'clamp(8rem, 15vw, 18rem)', lineHeight: 1,
           color: 'transparent', WebkitTextStroke: '1px rgba(255,255,255,0.04)',
           pointerEvents: 'none', letterSpacing: '-0.04em',
         }}>GROW</div>
@@ -292,9 +309,9 @@ export default function Landing() {
               </div>
               <h2 style={{
                 fontFamily: 'Unbounded, sans-serif', fontWeight: 900,
-                fontSize: 'clamp(1.8rem, 4vw, 3.5rem)', lineHeight: 0.92,
+                fontSize: isMobile ? '2rem' : 'clamp(1.8rem, 4vw, 3.5rem)', lineHeight: 0.92,
                 letterSpacing: '-0.03em', textTransform: 'uppercase',
-                color: 'white', marginBottom: 20,
+                color: 'white', marginBottom: 20, wordBreak: 'break-word'
               }}>
                 Where Growth<br />
                 <span style={{ color: ORANGE }}>Meets Savings</span>
@@ -331,9 +348,9 @@ export default function Landing() {
           }}>How It Works</div>
           <h2 style={{
             fontFamily: 'Unbounded, sans-serif', fontWeight: 900,
-            fontSize: 'clamp(1.8rem, 4vw, 3.2rem)', lineHeight: 0.92,
+            fontSize: isMobile ? '2rem' : 'clamp(1.8rem, 4vw, 3.2rem)', lineHeight: 0.92,
             letterSpacing: '-0.04em', textTransform: 'uppercase',
-            color: NAVY, marginBottom: 56,
+            color: NAVY, marginBottom: 56, wordBreak: 'break-word'
           }}>Three Steps to<br /><span style={{ color: TEAL }}>Smarter Marketing</span></h2>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
@@ -372,7 +389,7 @@ export default function Landing() {
         borderTop: '1px solid rgba(255,255,255,0.06)',
       }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '60px 48px 32px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 2fr', gap: 48, marginBottom: 48 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr 2fr', gap: isMobile ? 32 : 48, marginBottom: 48 }}>
             {/* Brand */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -436,7 +453,7 @@ export default function Landing() {
               </div>
             </div>
           </div>
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 12 : 0 }}>
             <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.56rem', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em' }}>
               © 2026 GrubGain. All rights reserved.
             </span>

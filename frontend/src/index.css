@@ -257,3 +257,79 @@ input:focus {
     transform: rotate(360deg);
   }
 }
+
+/* ─── Responsive: Tablet (≤900px) ─── */
+@media (max-width: 900px) {
+  /* Dashboard pages */
+  [style*="padding: '36px 42px'"],
+  [style*="padding: 36px 42px"] {
+    padding: 20px 16px !important;
+  }
+
+  /* Grid layouts collapse */
+  [style*="gridTemplateColumns: '1fr 1fr'"],
+  [style*="gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 0.9fr)'"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ─── Responsive: Mobile (≤640px) ─── */
+@media (max-width: 640px) {
+  /* Make dashboard main area scrollable on mobile */
+  body {
+    overflow-x: hidden;
+  }
+
+  /* Header topbar pills — hide date range on small screens */
+  .topbar-date {
+    display: none;
+  }
+
+  /* Dashboard card grids → single column */
+  .dash-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* History cards */
+  .history-card {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .history-card-image {
+    width: 100% !important;
+    height: 180px !important;
+  }
+
+  /* Scheduler cards */
+  .scheduler-cards {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Content studio panels */
+  .studio-layout {
+    flex-direction: column !important;
+  }
+
+  /* Restaurant profile tabs → horizontal scroll */
+  .profile-tabs {
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    width: 100% !important;
+    padding-bottom: 8px !important;
+  }
+
+  /* Reduce font sizes on mobile */
+  h1[style*="font-size: '1.8rem'"],
+  h1[style*="font-size: '1.6rem'"] {
+    font-size: 1.3rem !important;
+  }
+}
+
+/* ─── Dashboard Shell Mobile (sidebar stays as icon strip) ─── */
+@media (max-width: 768px) {
+  .dashboard-main-content {
+    padding-bottom: 16px !important;
+  }
+}

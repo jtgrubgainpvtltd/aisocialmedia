@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext'
 import BRANDING from '../constants/branding'
 import { PageErrorFallback } from '../components/GlobalErrorBoundary'
 import { resolveMediaUrl } from '../utils/mediaUrl'
+import { useIsSmallScreen } from '../utils/useIsSmallScreen'
+import SecureImage from '../components/ui/SecureImage'
 
 const ORANGE = BRANDING.colors.primary
 const TEAL = BRANDING.colors.secondary
@@ -22,6 +24,7 @@ export default function DashboardShell() {
   const hoverTimeout = useRef(null)
   
   const isOpen = isPinned || isHovered
+  const isMobile = useIsSmallScreen()
 
   const [showUserMenu, setShowUserMenu] = useState(false)
 
@@ -82,10 +85,15 @@ export default function DashboardShell() {
         .pin-btn:active {
           transform: scale(0.92);
         }
+        @media (max-width: 768px) {
+          .topbar-date { display: none !important; }
+          .topbar-city { display: none !important; }
+        }
       `}</style>
       
-      {/* ── SIDEBAR ── */}
+        {/* ── SIDEBAR ── */}
       <aside 
+        className="dashboard-sidebar"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         style={{
@@ -93,8 +101,10 @@ export default function DashboardShell() {
           background: NAVY, color: 'white',
           display: 'flex', flexDirection: 'column',
           transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1)',
-          overflow: 'hidden', position: 'relative', zIndex: 20,
+          overflow: 'hidden', zIndex: 100,
           boxShadow: isOpen ? '4px 0 24px rgba(0,0,0,0.15)' : 'none',
+          position: isMobile ? 'absolute' : 'relative',
+          height: '100vh', left: 0, top: 0,
       }}>
         {/* Logo */}
         <div style={{
@@ -230,8 +240,8 @@ export default function DashboardShell() {
               overflow: 'hidden', border: user?.logoUrl ? '1px solid rgba(255,255,255,0.2)' : 'none'
             }}>
               {user?.logoUrl ? (
-                <img 
-                  src={resolveMediaUrl(user.logoUrl)} 
+                <SecureImage 
+                  src={user.logoUrl} 
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                   alt="PFP" 
                 />
@@ -268,32 +278,35 @@ export default function DashboardShell() {
       </aside>
 
       {/* ── MAIN AREA ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, marginLeft: isMobile ? 64 : 0 }}>
         
         {/* Top Bar */}
         <header style={{
-          height: 60, flexShrink: 0,
+          minHeight: 60, height: 'auto', flexShrink: 0,
           background: 'rgba(247,243,236,0.92)',
           backdropFilter: 'blur(20px)',
           borderBottom: '1px solid rgba(12,12,12,0.08)',
-          display: 'flex', alignItems: 'center',
-          padding: '0 24px', gap: 12,
+          display: 'flex', alignItems: 'center', flexWrap: 'wrap',
+          padding: isMobile ? '8px 12px' : '0 24px', gap: isMobile ? 8 : 12,
           boxShadow: '0 1px 12px rgba(0,0,0,0.04)',
         }}>
           {/* Restaurant name */}
           <div style={{
-            padding: '7px 16px', borderRadius: 8,
+            padding: isMobile ? '6px 12px' : '7px 16px', borderRadius: 8,
             border: '1px solid rgba(12,12,12,0.12)',
             background: 'white', color: NAVY,
             fontFamily: 'Inter, sans-serif', fontSize: '0.8rem', fontWeight: 600,
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={NAVY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            {user?.restaurantName || 'My Restaurant'}
+            <span style={{ maxWidth: isMobile ? 120 : 'auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user?.restaurantName || 'My Restaurant'}
+            </span>
           </div>
 
           {/* City */}
-          <div style={{
+          {!isMobile && (
+            <div style={{
             padding: '7px 14px', borderRadius: 8,
             border: '1px solid rgba(12,12,12,0.12)',
             background: 'rgba(0,122,100,0.06)', color: TEAL,
@@ -303,9 +316,10 @@ export default function DashboardShell() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={TEAL} strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
             {user?.city || 'City'}
           </div>
+          )}
 
           {/* Date range indicator */}
-          <span style={{
+          <span className="topbar-date" style={{
             fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.08em',
             color: 'rgba(12,12,12,0.35)', padding: '7px 12px',
             border: '1px solid rgba(12,12,12,0.1)', borderRadius: 8,
@@ -315,24 +329,26 @@ export default function DashboardShell() {
           </span>
 
           {/* Spacer */}
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1, minWidth: isMobile ? 0 : 'auto' }} />
 
           {/* Content Studio CTA */}
           <NavLink to="/dashboard/studio" style={{
-            padding: '8px 16px', borderRadius: 8,
+            padding: isMobile ? '8px 10px' : '8px 16px', borderRadius: 8,
             background: TEAL, color: 'white', textDecoration: 'none',
             fontFamily: 'Unbounded, sans-serif', fontWeight: 700, fontSize: '0.58rem',
             letterSpacing: '0.08em', textTransform: 'uppercase',
             display: 'flex', alignItems: 'center', gap: 6,
             boxShadow: '0 4px 12px rgba(0,122,100,0.25)',
+            flexShrink: 0,
+            whiteSpace: 'nowrap'
           }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            Content Studio
+            {isMobile ? 'Studio' : 'Content Studio'}
           </NavLink>
         </header>
 
         {/* Scrollable content */}
-        <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+        <main className="dashboard-main-content" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
           <ErrorBoundary FallbackComponent={PageErrorFallback}>
             <Outlet />
           </ErrorBoundary>

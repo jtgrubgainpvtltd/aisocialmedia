@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SecureImage from './ui/SecureImage';
 
 /* ── Shared sub-components ────────────────────────────────────────── */
 
@@ -13,7 +14,7 @@ const Avatar = ({ url, fallback, size = 32, isDark = false }) => (
     boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
   }}>
     {url
-      ? <img src={url} alt={`${fallback || 'Restaurant'} profile logo`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ? <SecureImage src={url} alt={`${fallback || 'Restaurant'} profile logo`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       : <span style={{ fontSize: size * 0.42, fontWeight: 700, color: isDark ? '#efefef' : '#555' }}>
           {fallback?.[0]?.toUpperCase() || 'R'}
         </span>
@@ -36,7 +37,7 @@ const ImageSlot = ({ imageUrl, aspectRatio = '1 / 1', generating, isDark = false
         <span style={{ fontSize: 12, color: isDark ? '#666' : '#999', fontFamily: 'Inter, sans-serif' }}>Generating…</span>
       </div>
     ) : imageUrl ? (
-      <img src={imageUrl} alt="Generated social media creative" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: isDark ? '#000' : '#f0f2f5' }} />
+      <SecureImage src={imageUrl} alt="Generated social media creative" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: isDark ? '#000' : '#f0f2f5' }} />
     ) : (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#333' : '#ccc'} strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>

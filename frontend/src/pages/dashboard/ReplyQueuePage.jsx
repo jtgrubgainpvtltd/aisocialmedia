@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { replies as repliesApi } from '../../api/client';
 import { useToast, ToastContainer } from '../../components/Toast';
+import { useIsSmallScreen } from '../../utils/useIsSmallScreen';
 
 const TEAL = '#007A64';
 const NAVY = '#1a2332';
@@ -123,6 +124,7 @@ function ReplyCard({ reply, toast }) {
 
 export default function ReplyQueuePage() {
   const { toasts, toast } = useToast();
+  const isMobile = useIsSmallScreen();
   const { data, isLoading } = useQuery({
     queryKey: ['replies', { status: 'PENDING' }],
     queryFn: () => repliesApi.getAll({ status: 'PENDING' }).then((r) => r.data.data),
@@ -130,7 +132,7 @@ export default function ReplyQueuePage() {
 
   return (
     <>
-    <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
+    <div style={{ padding: isMobile ? '20px 16px' : '28px 32px', maxWidth: 1400 }}>
       <div style={{ marginBottom: 32 }}>
         <p style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.4)', marginBottom: 4 }}>Engagement</p>
         <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.6rem', letterSpacing: '-0.03em', color: NAVY, lineHeight: 1 }}>AI Reply Queue</h1>

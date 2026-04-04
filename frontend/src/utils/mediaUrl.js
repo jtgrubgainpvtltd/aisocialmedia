@@ -1,20 +1,32 @@
 export const resolveMediaUrl = (path) => {
   if (!path) return "";
 
-  // 1. Get the Backend Base URL (e.g., https://xyz.ngrok-free.dev)
-  // We remove '/api/v1' from the end of your VITE_API_URL
+  // The live backend base URL, e.g. "https://xyz.ngrok-free.app"
   const backendBase = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:5000';
 
-  // 2. If the path already has 'http', it might be the old 'localhost' from your local DB
   if (path.startsWith('http')) {
-    return path.replace('http://localhost:5000', backendBase);
+    // If the URL already points to our current backend — use as-is
+    if (path.startsWith(backendBase)) {
+      return path;
+    }
+
+    // For ANY other absolute URL (localhost, old Ngrok, old VDI IP, etc.)
+    // strip the foreign origin and keep only the /uploads/... path portion,
+    // then prepend the current live backend.
+    try {
+      const url = new URL(path);
+      return `${backendBase}${url.pathname}`;
+    } catch {
+      // Fallback: dumb replace for malformed URLs
+      return path.replace(/^https?:\/\/[^/]+/, backendBase);
+    }
   }
 
-  // 3. If it's a relative path (starts with /uploads), prepend the Ngrok URL
+  // Relative path starting with / (e.g. /uploads/image.png)
   if (path.startsWith('/')) {
     return `${backendBase}${path}`;
   }
 
-  // 4. Fallback for paths that don't start with /
+  // Relative path without leading slash
   return `${backendBase}/${path}`;
 };

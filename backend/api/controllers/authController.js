@@ -124,6 +124,7 @@ export const login = [
         message: 'Login successful',
         data: {
           accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
           user: result.user
         }
       });
@@ -156,7 +157,8 @@ export const refresh = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        accessToken: result.accessToken
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken
       }
     });
   } catch (error) {

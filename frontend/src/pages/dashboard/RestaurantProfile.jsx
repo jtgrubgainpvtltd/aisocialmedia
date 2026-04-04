@@ -10,12 +10,14 @@ import {
   FormField,
 } from './RestaurantProfile.helpers'
 import { resolveMediaUrl } from '../../utils/mediaUrl'
+import { useIsSmallScreen } from '../../utils/useIsSmallScreen'
 
 const TEAL = '#007A64'
 const NAVY = '#1a2332'
 
 export default function RestaurantProfile() {
   const { user } = useAuth()
+  const isMobile = useIsSmallScreen()
   const [form, setForm] = useState(EMPTY_FORM)
   const [profile, setProfile] = useState(null)
   const [brandAssets, setBrandAssets] = useState([])
@@ -177,7 +179,7 @@ export default function RestaurantProfile() {
 
   if (!isEditing) {
     return (
-      <div style={{ padding: '36px 42px', maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ padding: isMobile ? '20px 14px' : '36px 42px', maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
           <div style={{ maxWidth: 720 }}>
             <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.8rem', letterSpacing: '-0.04em', color: NAVY, lineHeight: 1 }}>Restaurant Profile</h1>
@@ -212,7 +214,7 @@ export default function RestaurantProfile() {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 0.9fr)', gap: 24, alignItems: 'stretch' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.1fr) minmax(320px, 0.9fr)', gap: 24, alignItems: 'stretch' }}>
           <div style={{ background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(24px)', border: '1px solid rgba(12,12,12,0.08)', borderRadius: 18, padding: 28, boxShadow: '0 2px 24px rgba(0,0,0,0.03)' }}>
             <div style={{ display: 'flex', gap: 18, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
               <div style={{ width: 88, height: 88, borderRadius: 18, background: currentLogoUrl ? 'white' : 'linear-gradient(135deg, rgba(0,122,100,0.08), rgba(232,100,10,0.08))', border: '1px solid rgba(12,12,12,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
@@ -320,7 +322,7 @@ export default function RestaurantProfile() {
   }
 
   return (
-    <div style={{ padding: '36px 42px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: isMobile ? '20px 14px' : '36px 42px', maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ maxWidth: 720 }}>
           <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.8rem', letterSpacing: '-0.04em', color: NAVY, lineHeight: 1 }}>Restaurant Profile</h1>
@@ -364,11 +366,11 @@ export default function RestaurantProfile() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
         <div style={{
-          width: 240, flexShrink: 0,
-          display: 'flex', flexDirection: 'column', gap: 6,
-          position: 'sticky', top: 90,
+          width: isMobile ? '100%' : 240, flexShrink: 0,
+          display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 6, flexWrap: isMobile ? 'wrap' : 'nowrap',
+          position: isMobile ? 'relative' : 'sticky', top: 90,
         }}>
           {tabs.map(tab => (
             <button

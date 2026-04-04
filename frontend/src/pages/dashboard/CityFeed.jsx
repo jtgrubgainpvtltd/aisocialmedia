@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { Link } from 'react-router-dom'
 import { trends } from '../../api/client' // Ensure your backend routes this to getRestaurantCityFeed
 import AppLoader from '../../components/ui/AppLoader'
+import { useIsSmallScreen } from '../../utils/useIsSmallScreen'
 
 const TEAL = '#007A64'
 const NAVY = '#1a2332'
@@ -40,6 +41,7 @@ export default function CityFeed() {
   
   // Dynamic Initial City
   const initialCity = user?.city || user?.restaurant?.city || SUPPORTED_CITIES[0]
+  const isMobile = useIsSmallScreen()
   
   const [selectedCity, setSelectedCity] = useState(initialCity)
   const [activeTab, setActiveTab] = useState('All')
@@ -76,7 +78,7 @@ export default function CityFeed() {
     : feedItems.filter(f => f.type?.toLowerCase() === activeTab.toLowerCase())
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1000 }}>
+    <div style={{ padding: isMobile ? '20px 16px' : '28px 32px', maxWidth: 1000 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 900, fontSize: '1.6rem', letterSpacing: '-0.03em', color: NAVY, lineHeight: 1 }}>{selectedCity} Feed</h1>
@@ -109,7 +111,7 @@ export default function CityFeed() {
         </div>
 
         {/* Feed type tabs */}
-        <div style={{ display: 'flex', gap: 4, padding: '4px', background: 'rgba(12,12,12,0.05)', borderRadius: 10, border: '1px solid rgba(12,12,12,0.08)' }}>
+        <div style={{ display: 'flex', gap: 4, padding: '4px', background: 'rgba(12,12,12,0.05)', borderRadius: 10, border: '1px solid rgba(12,12,12,0.08)', flexWrap: 'wrap' }}>
           {tabs.map(t => (
             <button key={t} onClick={() => setActiveTab(t)} style={{
               padding: '6px 14px', borderRadius: 7, border: 'none',
@@ -174,7 +176,7 @@ export default function CityFeed() {
                 transition: 'box-shadow 0.2s',
               }}>
                 <div style={{ padding: '20px 24px' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 14, flexDirection: isMobile ? 'column' : 'row' }}>
                     <div style={{
                       width: 44, height: 44, borderRadius: 12, flexShrink: 0,
                       background: getIconBg(item.type),
@@ -207,7 +209,7 @@ export default function CityFeed() {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center', width: isMobile ? '100%' : 'auto', marginTop: isMobile ? 8 : 0 }}>
                       <button onClick={() => setExpanded(isExpanded ? null : item.id)} style={{
                         padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
                         border: '1px solid rgba(12,12,12,0.12)', background: isExpanded ? 'rgba(12,12,12,0.05)' : 'transparent',

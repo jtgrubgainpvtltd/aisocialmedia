@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { content, analytics } from '../api/client'
 import QueryState from './ui/QueryState'
+import { useIsSmallScreen } from '../utils/useIsSmallScreen'
 
 const TEAL = '#007A64'
 
@@ -42,9 +43,9 @@ function MetricCard({ metric, delay }) {
   )
 }
 
-function RecentContentCard({ items, onView }) {
+function RecentContentCard({ items, onView, style }) {
   return (
-    <div style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(12,12,12,0.1)', borderRadius: 12, padding: '20px 24px' }}>
+    <div style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(12,12,12,0.1)', borderRadius: 12, padding: '20px 24px', ...style }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.5)', display: 'block', marginBottom: 6 }}>
@@ -99,7 +100,7 @@ function RecentContentCard({ items, onView }) {
   )
 }
 
-function WowHero({ stats, overview }) {
+function WowHero({ stats, overview, isMobile }) {
   const score = Math.min(
     100,
     Math.round((Number(overview.totalEngagement || 0) / Math.max(1, Number(overview.totalReach || 1))) * 1000)
@@ -110,18 +111,18 @@ function WowHero({ stats, overview }) {
       position: 'relative',
       overflow: 'hidden',
       borderRadius: 14,
-      padding: '22px 24px',
+      padding: isMobile ? '16px 20px' : '22px 24px',
       background: 'linear-gradient(120deg, #1a2332 0%, #22344b 55%, #007A64 100%)',
       color: 'white',
       boxShadow: '0 10px 28px rgba(26,35,50,0.22)',
     }}>
       <div style={{ position: 'absolute', right: -40, top: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
-      <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <div>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ paddingRight: isMobile ? 0 : 20 }}>
           <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.58rem', letterSpacing: '0.14em', textTransform: 'uppercase', opacity: 0.75 }}>
             Momentum Signal
           </span>
-          <h3 style={{ marginTop: 8, fontFamily: 'Unbounded, sans-serif', fontSize: '1.2rem', lineHeight: 1.2 }}>
+          <h3 style={{ marginTop: 8, fontFamily: 'Unbounded, sans-serif', fontSize: isMobile ? '1rem' : '1.2rem', lineHeight: 1.3 }}>
             You generated {stats.generated || 0} assets and published {stats.published || 0} posts.
           </h3>
           <p style={{ marginTop: 8, opacity: 0.82, fontSize: '0.82rem' }}>
@@ -142,6 +143,7 @@ function WowHero({ stats, overview }) {
 
 export default function AnalyticsDashboard() {
   const navigate = useNavigate()
+  const isMobile = useIsSmallScreen()
   // ── React Query: replaces useState + useEffect + manual loading/error ──
   const { data: statsData, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['content-stats'],
@@ -221,7 +223,7 @@ export default function AnalyticsDashboard() {
       loadingSubtitle="Crunching performance metrics…"
     >
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <WowHero stats={stats} overview={overview} />
+      <WowHero stats={stats} overview={overview} isMobile={isMobile} />
 
       {/* Metric Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
@@ -231,8 +233,8 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* Chart + Recent Content */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(320px, 1fr)', gap: 16, alignItems: 'start' }}>
-        <div style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(12,12,12,0.1)', borderRadius: 12, padding: '20px 24px' }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 16, alignItems: 'stretch', width: '100%' }}>
+        <div style={{ flex: isMobile ? 'none' : '1.7', width: isMobile ? '100%' : 'auto', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(12,12,12,0.1)', borderRadius: 12, padding: '20px 24px', boxSizing: 'border-box' }}>
           <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.5)', display: 'block', marginBottom: 16 }}>
             Content Generation Activity
           </span>
@@ -264,7 +266,7 @@ export default function AnalyticsDashboard() {
                 Publish a few posts to unlock timeline momentum here.
               </p>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
                 {recentContent.slice(0, 4).map((item, idx) => (
                   <div key={`${item.title}-${idx}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', minWidth: 0 }}>
                     <span style={{ marginTop: 4, width: 7, height: 7, borderRadius: '50%', background: TEAL, boxShadow: '0 0 0 4px rgba(0,122,100,0.12)', flexShrink: 0 }} />
@@ -278,7 +280,7 @@ export default function AnalyticsDashboard() {
             )}
           </div>
         </div>
-        <RecentContentCard items={recentContent} onView={handleViewPost} />
+        <RecentContentCard items={recentContent} onView={handleViewPost} style={{ flex: isMobile ? 'none' : '1', width: isMobile ? '100%' : 'auto', boxSizing: 'border-box' }} />
       </div>
     </div>
     </QueryState>

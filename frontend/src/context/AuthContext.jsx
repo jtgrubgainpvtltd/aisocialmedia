@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth } from '../api/client';
-import { setAccessToken, clearAccessToken } from '../api/client';
+import { setAccessToken, clearAccessToken, setRefreshToken, clearRefreshToken } from '../api/client';
 
 const AuthContext = createContext(null);
 let bootstrapAuthPromise = null;
@@ -38,6 +38,7 @@ export function AuthProvider({ children }) {
         // No valid refresh token - user needs to log in
         if (!isActive) return;
         clearAccessToken();
+        clearRefreshToken();
         setUser(null);
         setIsAuthenticated(false);
       }
@@ -56,6 +57,7 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await auth.login({ email, password });
       setAccessToken(data.data.accessToken);
+      if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
       setUser(data.data.user);
       setIsAuthenticated(true);
       return { success: true };
@@ -72,6 +74,7 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await auth.register(registerData);
       setAccessToken(data.data.accessToken);
+      if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
       setUser(data.data.user);
       setIsAuthenticated(true);
       return { success: true };
@@ -91,6 +94,7 @@ export function AuthProvider({ children }) {
       console.error('Logout error:', error);
     } finally {
       clearAccessToken();
+      clearRefreshToken();
       setUser(null);
       setIsAuthenticated(false);
     }

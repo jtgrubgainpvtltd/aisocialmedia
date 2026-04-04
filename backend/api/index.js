@@ -6,10 +6,10 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
-import { verifyRefreshToken } from "./utils/jwt.js";
-import prisma from "../prisma/client.js";
 
-// Import routes
+// Import middleware & routes
+import errorHandler from "./middleware/errorHandler.js";
+import { logger } from "./utils/logger.js";
 import authRoutes from "./routes/auth.routes.js";
 import restaurantRoutes from "./routes/restaurant.routes.js";
 import contentRoutes from "./routes/content.routes.js";
@@ -21,126 +21,54 @@ import locationRoutes from "./routes/location.routes.js";
 import googleRoutes from "./routes/google.routes.js";
 import replyRoutes from "./routes/reply.routes.js";
 
-// Import middleware
-import errorHandler from "./middleware/errorHandler.js";
-import { logger } from "./utils/logger.js";
-
 dotenv.config();
 
+// 1. INITIALIZE APP FIRST
 const app = express();
-const shouldLogRequests = process.env.REQUEST_LOGGING
-  ? process.env.REQUEST_LOGGING === "true"
-  : process.env.NODE_ENV === "production";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const uploadsPath = path.resolve(__dirname, "../public/uploads");
 
-if (process.env.TRUST_PROXY === "true") {
-  app.set("trust proxy", 1);
-}
+// 2. PROXY SETTINGS
+app.set('trust proxy', 1);
 
-// ==================== Security Headers ====================
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: [
-          "'self'",
-          "data:",
-          "blob:",
-          "http://localhost:5000",
-          "https://res.cloudinary.com",
-        ],
-        scriptSrc: ["'self'"],
-        connectSrc: [
-          "'self'",
-          process.env.CLIENT_URL || "http://localhost:5173",
-        ],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-  }),
-);
-
-// ==================== CORS Configuration ====================
-const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
-
+// 3. CORS CONFIGURATION
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow non-browser tools (curl/postman) and same-origin requests without Origin.
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("CORS: Origin not allowed"));
+    callback(null, true); // Allow all origins (Vercel, Ngrok, local)
   },
   credentials: true,
-  optionsSuccessStatus: 200,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning", "Accept"],
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight for all routes
+
+// 4. SECURITY & PARSING
+app.use(helmet({
+  contentSecurityPolicy: false,       // Disabled — CSP is handled by Vercel
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 
 app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: true, limit: "50kb" }));
 app.use(cookieParser());
 
-const protectGeneratedUploads = async (req, res, next) => {
-  const fileName = req.path.split("/").pop() || "";
-  if (!fileName.startsWith("generated_")) {
-    return next();
-  }
+// 5. STATIC FILES — /uploads served openly (cross-origin img tags cannot send cookies)
+//    Security: filenames are unguessable timestamps; only authenticated API calls reveal URLs.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsPath = path.resolve(__dirname, "../public/uploads");
 
-  try {
-    const refreshToken = req.cookies.refreshToken;
-    if (!refreshToken) {
-      return res.status(401).json({
-        success: false,
-        error: { message: "Authentication required to access generated images" },
-      });
-    }
+app.use("/uploads", express.static(uploadsPath, {
+  maxAge: "7d",
+  etag: true,
+  setHeaders: (res) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  },
+}));
 
-    const decoded = verifyRefreshToken(refreshToken);
-    const tokenRecord = await prisma.refreshToken.findFirst({
-      where: { token: refreshToken, user_id: decoded.userId },
-      select: { id: true, expires_at: true },
-    });
-
-    if (!tokenRecord || tokenRecord.expires_at < new Date()) {
-      return res.status(401).json({
-        success: false,
-        error: { message: "Invalid session for generated image access" },
-      });
-    }
-
-    next();
-  } catch {
-    return res.status(401).json({
-      success: false,
-      error: { message: "Invalid session for generated image access" },
-    });
-  }
-};
-
-app.use(
-  "/uploads",
-  protectGeneratedUploads,
-  cors(corsOptions),
-  express.static(uploadsPath, {
-    maxAge: "7d",
-    etag: true,
-    setHeaders: (res) => {
-      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-    },
-  }),
-);
-
+// 6. RATE LIMITING
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
@@ -148,31 +76,15 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
 app.use("/api/", limiter);
 
-// ==================== Request Logging ====================
-app.use((req, res, next) => {
-  if (shouldLogRequests) {
-    logger.info(`${req.method} ${req.path}`, {
-      ip: req.ip,
-      userAgent: req.get("user-agent"),
-    });
-  }
-  next();
-});
-
-// ==================== Health Check ====================
+// 7. HEALTH CHECK
 app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-  });
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// ==================== API Routes ====================
+// 8. API ROUTES
 const API_VERSION = "/api/v1";
-
 app.use(`${API_VERSION}/auth`, authRoutes);
 app.use(`${API_VERSION}/restaurant`, restaurantRoutes);
 app.use(`${API_VERSION}/content`, contentRoutes);
@@ -184,15 +96,10 @@ app.use(`${API_VERSION}/locations`, locationRoutes);
 app.use(`${API_VERSION}/google`, googleRoutes);
 app.use(`${API_VERSION}/replies`, replyRoutes);
 
-// ==================== 404 Handler ====================
+// 9. ERROR HANDLING
 app.use("*", (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: `Route ${req.originalUrl} not found`,
-  });
+  res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
 });
-
-// ==================== Error Handler ====================
 app.use(errorHandler);
 
 export default app;

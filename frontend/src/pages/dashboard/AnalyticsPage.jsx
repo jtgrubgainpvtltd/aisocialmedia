@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { analytics, content, posts } from '../../api/client'
+import { useIsSmallScreen } from '../../utils/useIsSmallScreen'
 
 const TEAL = '#007A64'
 const NAVY = '#1a2332'
@@ -9,6 +10,7 @@ const ORANGE = '#E8640A'
 export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState('Last 30 Days')
   const [platform, setPlatform] = useState('All Platforms')
+  const isMobile = useIsSmallScreen()
 
   // ── React Query: parallel data fetching, 30s cache, 2 auto-retries ──
   const { data: statsData, isLoading: statsLoading } = useQuery({
@@ -50,7 +52,7 @@ export default function AnalyticsPage() {
   ]
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1200 }}>
+    <div style={{ padding: isMobile ? '16px 14px' : '28px 32px', maxWidth: 1200 }}>
       {/* Header & Filters */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32, flexWrap: 'wrap', gap: 20 }}>
         <div>
@@ -91,7 +93,7 @@ export default function AnalyticsPage() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: 24 }}>
         {/* Top Posts Table */}
         <div style={{
           background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(20px)',

@@ -8,6 +8,7 @@ import { resolveMediaUrl } from '../utils/mediaUrl'
 import QueryState from './ui/QueryState'
 import AppButton from './ui/AppButton'
 import AppCard from './ui/AppCard'
+import SecureImage from './ui/SecureImage'
 import {
   PreviewInstagramPost,
   PreviewTwitter,
@@ -244,7 +245,7 @@ export default function SchedulerView() {
           </div>
         ) : (
           <>
-            {viewMode === 'list' && <div className="hidden md:block overflow-x-auto">
+            {viewMode === 'list' && <div className="overflow-x-auto">
               <table className="scheduler-table">
                 <thead>
                   <tr>
@@ -262,13 +263,10 @@ export default function SchedulerView() {
                         <div className="flex items-center gap-4">
                           <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', background: 'var(--border-dim)', flexShrink: 0 }}>
                             {resolveImageUrl(post) && (
-                              <img
+                              <SecureImage
                                 src={resolveImageUrl(post)}
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 alt={`Scheduled ${post.platform} post thumbnail`}
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none'
-                                }}
                               />
                             )}
                           </div>
@@ -307,7 +305,7 @@ export default function SchedulerView() {
               </table>
             </div>}
             {viewMode === 'grid' && (
-              <div className="p-6 hidden md:block">
+              <div className="p-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                   {filtered.map((post) => (
                     <div key={post.id} className="bg-white rounded-2xl border border-[var(--border-dim)] overflow-hidden">
@@ -325,18 +323,10 @@ export default function SchedulerView() {
                       </div>
                       <div className="aspect-square bg-slate-100">
                         {resolveImageUrl(post) && (
-                          <img
+                          <SecureImage
                             src={resolveImageUrl(post)}
                             alt={`Scheduled ${post.platform} post`}
                             className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const fallbackSrc = post.content?.image_url
-                              if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
-                                e.currentTarget.src = fallbackSrc
-                                return
-                              }
-                              e.currentTarget.style.display = 'none'
-                            }}
                           />
                         )}
                       </div>

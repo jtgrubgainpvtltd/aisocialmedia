@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+const API_BASE_URL = window.API_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 let inMemoryAccessToken = null;
 let refreshPromise = null;
@@ -17,10 +17,23 @@ export const clearAccessToken = () => {
   inMemoryAccessToken = null;
 };
 
+export const setRefreshToken = (token) => {
+  if (token) localStorage.setItem('refresh_token', token);
+};
+
+export const getRefreshToken = () => {
+  return localStorage.getItem('refresh_token');
+};
+
+export const clearRefreshToken = () => {
+  localStorage.removeItem('refresh_token');
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
   },
   withCredentials: true,
 });
@@ -56,8 +69,12 @@ api.interceptors.response.use(
 
       try {
         if (!refreshPromise) {
+          const storedRefresh = getRefreshToken();
           refreshPromise = axios
-            .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+            .post(`${API_BASE_URL}/auth/refresh`, storedRefresh ? { refreshToken: storedRefresh } : {}, {
+              withCredentials: true,
+              headers: { 'ngrok-skip-browser-warning': 'true' }
+            })
             .finally(() => {
               refreshPromise = null;
             });
@@ -66,12 +83,14 @@ api.interceptors.response.use(
         const { data } = await refreshPromise;
 
         setAccessToken(data.data.accessToken);
+        if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
         originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${data.data.accessToken}`;
 
         return api(originalRequest);
       } catch (refreshError) {
         clearAccessToken();
+        clearRefreshToken();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -86,7 +105,10 @@ export const auth = {
   login: (data) => api.post('/auth/login', data),
   logout: () => api.post('/auth/logout'),
   getCurrentUser: () => api.get('/auth/me'),
-  refreshToken: () => api.post('/auth/refresh'),
+  refreshToken: () => {
+    const token = getRefreshToken();
+    return api.post('/auth/refresh', token ? { refreshToken: token } : {});
+  },
 };
 
 export const restaurant = {

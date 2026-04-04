@@ -5,6 +5,8 @@ import { content, posts } from "../../api/client";
 import { useToast, ToastContainer } from "../../components/Toast";
 import QueryState from "../../components/ui/QueryState";
 import { resolveMediaUrl } from "../../utils/mediaUrl";
+import { useIsSmallScreen } from "../../utils/useIsSmallScreen";
+import SecureImage from "../../components/ui/SecureImage";
 
 const TEAL = "#007A64";
 const NAVY = "#1a2332";
@@ -15,6 +17,7 @@ export default function HistoryPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toasts, toast } = useToast();
+  const isMobile = useIsSmallScreen();
 
   // ── Fetch content history via React Query ──
   const { data: contentData, isLoading: contentLoading, error: contentError, refetch: refetchContent } = useQuery({
@@ -140,7 +143,7 @@ export default function HistoryPage() {
         loadingTitle="Loading content history"
         loadingSubtitle="Gathering generated and published posts…"
       >
-      <div style={{ padding: "28px 32px", maxWidth: 1200 }}>
+      <div style={{ padding: isMobile ? '16px 14px' : '28px 32px', maxWidth: 1200 }}>
         {/* Header */}
         <div
           style={{
@@ -387,6 +390,7 @@ export default function HistoryPage() {
                   padding: "24px",
                   boxShadow: "0 2px 16px rgba(0,0,0,0.03)",
                   display: "flex",
+                  flexDirection: isMobile ? "column" : "row",
                   gap: 24,
                   flexWrap: "wrap",
                 }}
@@ -394,8 +398,8 @@ export default function HistoryPage() {
                 {/* Image or placeholder */}
                 <div
                   style={{
-                    width: 120,
-                    height: 120,
+                    width: isMobile ? '100%' : 120,
+                    height: isMobile ? 180 : 120,
                     borderRadius: 12,
                     flexShrink: 0,
                     overflow: "hidden",
@@ -403,46 +407,31 @@ export default function HistoryPage() {
                   }}
                 >
                   {post.imageUrl ? (
-                    <>
-                      <img
-                        src={post.imageUrl}
-                        alt="AI Generated"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                        onError={(e) => {
-                          e.target.style.display = "none";
-                          if (e.target.nextElementSibling) {
-                            e.target.nextElementSibling.style.display = "flex";
-                          }
-                        }}
-                      />
-                      <div
-                        className="fallback-placeholder"
-                        style={{
-                          display: "none",
-                          width: "100%",
-                          height: "100%",
-                          background: `linear-gradient(135deg, rgba(0,122,100,0.15) 0%, rgba(232,100,10,0.08) 100%)`,
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <svg
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="rgba(12,12,12,0.3)"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
+                    <SecureImage
+                      src={post.imageUrl}
+                      alt="AI Generated"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                      fallback={
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            background: `linear-gradient(135deg, rgba(0,122,100,0.15) 0%, rgba(232,100,10,0.08) 100%)`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
                         >
-                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                        </svg>
-                      </div>
-                    </>
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(12,12,12,0.3)" strokeWidth="1.5" strokeLinecap="round">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                          </svg>
+                        </div>
+                      }
+                    />
                   ) : (
                     <div
                       style={{

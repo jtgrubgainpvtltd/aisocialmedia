@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import ImageCropperModal from "./ImageCropperModal";
 import { useToast, ToastContainer } from "./Toast";
 import { PreviewInstagramPost, PreviewInstagramStory, PreviewTwitter, PreviewFacebook, PreviewWhatsApp } from "./SocialPreviews";
+import { useIsSmallScreen } from "../utils/useIsSmallScreen";
 import SelectField from "./ui/SelectField";
 import { resolveMediaUrl } from "../utils/mediaUrl";
 
@@ -53,6 +54,7 @@ export default function AIContentStudio() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const isMobile = useIsSmallScreen();
   const { toasts, toast } = useToast();
   const queryClient = useQueryClient();
   const historyToastShownRef = useRef(false);
@@ -142,18 +144,18 @@ export default function AIContentStudio() {
         } else {
           setCaptionEn(caption);
         }
-        
+
         // Extract hashtags
         const hashtagRegex = /#\w+/g;
         const foundHashtags = caption.match(hashtagRegex) || [];
         setHashtags(foundHashtags);
       }
-      
+
       if (resolvedImageUrl) {
         // Rewrite any localhost:5000 URLs to the live backend origin
         setImageUrl(resolveMediaUrl(resolvedImageUrl));
       }
-      
+
       if (resolvedPlatform) {
         // Normalize platform casing: DB has uppercase, UI expects title case
         const normalizedPlatform = resolvedPlatform.toLowerCase()
@@ -162,9 +164,9 @@ export default function AIContentStudio() {
           .join(' ');
         setPlatform(normalizedPlatform);
       }
-      
+
       setGenerated(true); // Mark as generated so buttons appear
-      
+
       // Show toast only once (avoid double-render in dev mode)
       if (!historyToastShownRef.current) {
         toast.success('Post loaded from history! You can edit, crop, or schedule.');
@@ -199,12 +201,16 @@ export default function AIContentStudio() {
     try {
       const fullCaption =
         `${captionEn}\n\n${captionHi}\n\n${hashtags.join(" ")}`.trim();
+      const backendBase = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || '';
+      const relativeImageUrl = imageUrl && backendBase
+        ? imageUrl.replace(backendBase, '')
+        : imageUrl;
       const res = await posts.schedule({
         platform: platform.toUpperCase(),
         scheduled_date: scheduleDate,
         scheduled_time: scheduleTime,
         caption: fullCaption,
-        image_url: imageUrl,
+        image_url: relativeImageUrl || imageUrl,
       });
       if (res.data.success) {
         toast.success("Post scheduled! View it in the Scheduler tab.");
@@ -275,7 +281,7 @@ export default function AIContentStudio() {
         setHashtags(foundHashtags.length > 0 ? foundHashtags : []);
 
         const rawUrl = data.data.imageUrl || "";
-        
+
         // resolveMediaUrl handles relative paths, absolute paths,
         // and rewrites any leftover localhost origins to the live backend.
         setImageUrl(resolveMediaUrl(rawUrl));
@@ -288,7 +294,7 @@ export default function AIContentStudio() {
       }
     } catch (err) {
       console.error("Generation error:", err);
-      
+
       let errorMsg = "Failed to generate content. Check your API connection.";
       if (err.response?.data?.errors && err.response.data.errors.length > 0) {
         errorMsg = err.response.data.errors[0].msg;
@@ -297,7 +303,7 @@ export default function AIContentStudio() {
       } else if (err.response?.data?.message) {
         errorMsg = err.response.data.message;
       }
-      
+
       setError(errorMsg);
     } finally {
       setGenerating(false);
@@ -342,8 +348,8 @@ export default function AIContentStudio() {
       console.error(err);
       setError(
         err.response?.data?.error?.message ||
-          err.response?.data?.message ||
-          "Failed to publish now.",
+        err.response?.data?.message ||
+        "Failed to publish now.",
       );
     } finally {
       setPublishing(false);
@@ -368,12 +374,12 @@ export default function AIContentStudio() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-8 items-start p-8">
+    <div className={`grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-8 items-start ${isMobile ? 'p-4' : 'p-8'}`}>
       {/* ─── Left: Data Inputs ─── */}
       <div
         className="glass-card"
         style={{
-          padding: 32,
+          padding: isMobile ? '20px 16px' : 32,
           display: "flex",
           flexDirection: "column",
         }}
@@ -418,7 +424,7 @@ export default function AIContentStudio() {
           />
         </div>
 
-        <div className="flex flex-wrap gap-6 p-5 rounded-2xl mb-8" style={{ background: "var(--teal-muted)", border: "1px solid var(--teal-light)" }}>
+        <div className="flex flex-wrap p-5 rounded-2xl mb-8" style={{ gap: isMobile ? 16 : 24, background: "var(--teal-muted)", border: "1px solid var(--teal-light)" }}>
           {[
             { label: "Add CTA", checked: includeCTA, onChange: setIncludeCTA },
             { label: "Emojis", checked: addEmojis, onChange: setAddEmojis },
@@ -431,7 +437,7 @@ export default function AIContentStudio() {
                 onChange={() => opt.onChange((v) => !v)}
                 className="accent-teal-600 w-4 h-4 cursor-pointer"
               />
-              <span className="text-xs font-semibold opacity-70 group-hover:opacity-100 transition-opacity" style={{ color: "var(--fg)", fontFamily: "Inter, sans-serif" }}>
+              <span className="font-semibold opacity-70 group-hover:opacity-100 transition-opacity" style={{ fontSize: isMobile ? '0.8rem' : '0.75rem', color: "var(--fg)", fontFamily: "Inter, sans-serif" }}>
                 {opt.label}
               </span>
             </label>
@@ -475,65 +481,65 @@ export default function AIContentStudio() {
         }}
       >
         {/* Preview Container */}
-        <div style={{ padding: 40, background: "rgba(0,0,0,0.03)", display: "flex", justifyContent: "center", alignItems: "center", minHeight: 400 }}>
+        <div style={{ padding: isMobile ? '24px 16px' : 40, background: "rgba(0,0,0,0.03)", display: "flex", justifyContent: "center", alignItems: "center", minHeight: isMobile ? 320 : 400 }}>
           {platform === 'Instagram' && format === 'Post' && (
-            <PreviewInstagramPost 
-              imageUrl={generated ? imageUrl : ''} 
-              captionEn={captionEn} 
-              captionHi={captionHi} 
-              restaurantName={user?.restaurantName || user?.name} 
-              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
-              generating={generating} 
+            <PreviewInstagramPost
+              imageUrl={generated ? imageUrl : ''}
+              captionEn={captionEn}
+              captionHi={captionHi}
+              restaurantName={user?.restaurantName || user?.name}
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''}
+              generating={generating}
               language={language}
               aspectRatio={getPreviewAspectRatio()}
             />
           )}
           {platform === 'Instagram' && format === 'Story' && (
-            <PreviewInstagramStory 
-              imageUrl={generated ? imageUrl : ''} 
-              restaurantName={user?.restaurantName || user?.name} 
-              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
-              generating={generating} 
+            <PreviewInstagramStory
+              imageUrl={generated ? imageUrl : ''}
+              restaurantName={user?.restaurantName || user?.name}
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''}
+              generating={generating}
             />
           )}
           {platform === 'Twitter / X' && (
-            <PreviewTwitter 
-              imageUrl={generated ? imageUrl : ''} 
-              captionEn={captionEn} 
-              captionHi={captionHi} 
-              restaurantName={user?.restaurantName || user?.name} 
-              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
-              generating={generating} 
+            <PreviewTwitter
+              imageUrl={generated ? imageUrl : ''}
+              captionEn={captionEn}
+              captionHi={captionHi}
+              restaurantName={user?.restaurantName || user?.name}
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''}
+              generating={generating}
               language={language}
               aspectRatio={getPreviewAspectRatio()}
             />
           )}
           {(platform === 'Facebook' || platform === 'Google Business') && (
-            <PreviewFacebook 
-              imageUrl={generated ? imageUrl : ''} 
-              captionEn={captionEn} 
-              captionHi={captionHi} 
-              restaurantName={user?.restaurantName || user?.name} 
-              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''} 
-              generating={generating} 
+            <PreviewFacebook
+              imageUrl={generated ? imageUrl : ''}
+              captionEn={captionEn}
+              captionHi={captionHi}
+              restaurantName={user?.restaurantName || user?.name}
+              avatarUrl={user?.logoUrl ? (user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`) : ''}
+              generating={generating}
               language={language}
               aspectRatio={getPreviewAspectRatio()}
             />
           )}
           {platform === 'WhatsApp Status' && (
-            <PreviewWhatsApp 
-              imageUrl={generated ? imageUrl : ''} 
-              captionEn={captionEn} 
-              captionHi={captionHi} 
-              generating={generating} 
+            <PreviewWhatsApp
+              imageUrl={generated ? imageUrl : ''}
+              captionEn={captionEn}
+              captionHi={captionHi}
+              generating={generating}
             />
           )}
         </div>
 
         {/* Actions Row */}
         {generated && imageUrl && (
-          <div style={{ padding: "16px 24px", background: "rgba(255,255,255,0.4)", borderTop: "1px solid var(--border)", display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <button onClick={() => setShowCropModal(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-[0.6rem] font-bold uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm font-unbounded">
+          <div style={{ padding: isMobile ? "16px" : "16px 24px", background: "rgba(255,255,255,0.4)", borderTop: "1px solid var(--border)", display: "flex", gap: isMobile ? 8 : 12, flexWrap: "wrap" }}>
+            <button onClick={() => setShowCropModal(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-[0.6rem] font-bold uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm font-unbounded flex-1 justify-center">
               ✂️ Crop
             </button>
             <button onClick={() => setShowScheduler(!showScheduler)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--teal)] text-white text-[0.6rem] font-bold uppercase tracking-wider hover:brightness-110 transition-all shadow-sm font-unbounded">
@@ -550,7 +556,7 @@ export default function AIContentStudio() {
 
         {/* Inline Scheduler */}
         {showScheduler && (
-          <div style={{ padding: 24, background: "rgba(0,0,0,0.02)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ padding: isMobile ? "20px 16px" : 24, background: "rgba(0,0,0,0.02)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 16 }}>
             <h4 style={{ color: "var(--fg)", fontSize: "0.9rem", margin: 0, fontWeight: 700 }}>Choose Time</h4>
             <div className="flex gap-4">
               <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} className="flex-1 px-4 py-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm outline-none focus:border-[var(--teal)]" />
@@ -567,9 +573,9 @@ export default function AIContentStudio() {
               </div>
             )}
             <button
-               onClick={handleSchedule}
-               disabled={scheduling}
-               className="w-full py-3.5 rounded-xl bg-[var(--teal)] text-white font-bold text-xs uppercase tracking-widest hover:brightness-110 disabled:opacity-50 transition-all shadow-md font-unbounded"
+              onClick={handleSchedule}
+              disabled={scheduling}
+              className="w-full py-3.5 rounded-xl bg-[var(--teal)] text-white font-bold text-xs uppercase tracking-widest hover:brightness-110 disabled:opacity-50 transition-all shadow-md font-unbounded"
             >
               {scheduling ? 'Scheduling...' : 'Confirm Schedule'}
             </button>
@@ -577,7 +583,7 @@ export default function AIContentStudio() {
         )}
 
         {/* Text Area */}
-        <div style={{ padding: 24, borderTop: "1px solid var(--border)", flex: 1 }}>
+        <div style={{ padding: isMobile ? "20px 16px" : 24, borderTop: "1px solid var(--border)", flex: 1 }}>
           <div className="flex items-center justify-between mb-4">
             <span className="text-[0.6rem] uppercase opacity-40 font-bold tracking-[0.2em] font-mono-custom">Generated Copy</span>
             <button onClick={handleCopy} disabled={!generated} className="text-[0.6rem] font-bold text-[var(--teal)] uppercase tracking-wider disabled:opacity-20 font-unbounded">Copy Text</button>
