@@ -6,14 +6,12 @@ import { ErrorBoundary } from 'react-error-boundary'
 import { useAuth } from '../context/AuthContext'
 import BRANDING from '../constants/branding'
 import { PageErrorFallback } from '../components/GlobalErrorBoundary'
+import { resolveMediaUrl } from '../utils/mediaUrl'
 
 const ORANGE = BRANDING.colors.primary
 const TEAL = BRANDING.colors.secondary
 const NAVY = BRANDING.colors.navy
 
-const BACKEND_ORIGIN = (
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1"
-).replace("/api/v1", "");
 
 export default function DashboardShell() {
   const { user, logout } = useAuth()
@@ -233,7 +231,7 @@ export default function DashboardShell() {
             }}>
               {user?.logoUrl ? (
                 <img 
-                  src={user.logoUrl.startsWith('http') ? user.logoUrl : `${BACKEND_ORIGIN}${user.logoUrl}`} 
+                  src={resolveMediaUrl(user.logoUrl)} 
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                   alt="PFP" 
                 />

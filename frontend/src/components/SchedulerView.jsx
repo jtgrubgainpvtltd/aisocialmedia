@@ -15,9 +15,7 @@ import {
   PreviewWhatsApp
 } from './SocialPreviews'
 
-const BACKEND_ORIGIN = (
-  import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
-).replace('/api/v1', '')
+
 
 const InstagramIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -69,15 +67,14 @@ const resolveImageUrl = (post) => {
   const candidates = [post?.image_url, post?.content?.image_url].filter((v) => typeof v === 'string' && v.trim())
   if (candidates.length === 0) return null
 
-  // Try shared resolver first
+  // Try shared resolver first — handles localhost rewriting, relative paths, absolute URLs
   const primary = resolveMediaUrl(candidates[0])
   if (primary) return primary
 
-  // Hard fallback for odd DB values
+  // Hard fallback: extract /uploads/... path and resolve it
   const raw = candidates[0].replace(/\\/g, '/').trim()
   const uploads = raw.match(/\/uploads\/[^?#]*/i)
-  if (uploads?.[0]) return `${BACKEND_ORIGIN}${uploads[0]}`
-  return `${BACKEND_ORIGIN}/${raw.replace(/^\.?\//, '')}`
+  return resolveMediaUrl(uploads?.[0] ?? raw)
 }
 
 const resolveLogoUrl = (logoUrl) => {

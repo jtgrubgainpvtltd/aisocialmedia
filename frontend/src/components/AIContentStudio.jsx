@@ -8,6 +8,7 @@ import ImageCropperModal from "./ImageCropperModal";
 import { useToast, ToastContainer } from "./Toast";
 import { PreviewInstagramPost, PreviewInstagramStory, PreviewTwitter, PreviewFacebook, PreviewWhatsApp } from "./SocialPreviews";
 import SelectField from "./ui/SelectField";
+import { resolveMediaUrl } from "../utils/mediaUrl";
 
 
 const BACKEND_ORIGIN = (
@@ -149,8 +150,8 @@ export default function AIContentStudio() {
       }
       
       if (resolvedImageUrl) {
-        // Keep the URL as-is - Vite proxy handles /uploads/ paths
-        setImageUrl(resolvedImageUrl);
+        // Rewrite any localhost:5000 URLs to the live backend origin
+        setImageUrl(resolveMediaUrl(resolvedImageUrl));
       }
       
       if (resolvedPlatform) {
@@ -275,15 +276,9 @@ export default function AIContentStudio() {
 
         const rawUrl = data.data.imageUrl || "";
         
-        // Robust URL joining
-        let finalUrl = rawUrl;
-        if (rawUrl && !rawUrl.startsWith('http')) {
-          const cleanOrigin = BACKEND_ORIGIN.endsWith('/') ? BACKEND_ORIGIN.slice(0, -1) : BACKEND_ORIGIN;
-          const cleanPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
-          finalUrl = `${cleanOrigin}${cleanPath}`;
-        }
-        
-        setImageUrl(finalUrl);
+        // resolveMediaUrl handles relative paths, absolute paths,
+        // and rewrites any leftover localhost origins to the live backend.
+        setImageUrl(resolveMediaUrl(rawUrl));
         setGenerated(true);
 
         // Ensure History page fetches the newly generated content when visited next
