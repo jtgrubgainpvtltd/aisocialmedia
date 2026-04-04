@@ -2,6 +2,7 @@ import prisma from '../../prisma/client.js';
 import logger from '../utils/logger.js';
 import { decrypt } from '../utils/encryption.js';
 import * as metaService from '../services/metaService.js';
+import { normalizePlatformInput } from '../utils/contentNormalization.js';
 
 /**
  * Schedule a post
@@ -47,12 +48,14 @@ export const schedulePost = async (req, res, next) => {
       });
     }
 
+    const normalizedPlatform = normalizePlatformInput(platform, 'INSTAGRAM');
+
     // Create scheduled post
     const scheduledPost = await prisma.scheduledPost.create({
       data: {
         restaurant_id: user.restaurant.id,
         content_id: content_id ? parseInt(content_id) : null,
-        platform: (platform || 'INSTAGRAM').toUpperCase(),
+        platform: normalizedPlatform,
         scheduled_date: parsedDate,
         scheduled_time: scheduled_time || '18:00',
         caption: caption || '',
@@ -235,7 +238,7 @@ export const publishNow = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { content_id, platform, caption, image_url } = req.body;
-    const normalizedPlatform = (platform || 'INSTAGRAM').toUpperCase();
+    const normalizedPlatform = normalizePlatformInput(platform, 'INSTAGRAM');
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

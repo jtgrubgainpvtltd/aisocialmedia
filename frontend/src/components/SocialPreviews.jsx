@@ -21,7 +21,7 @@ const Avatar = ({ url, fallback, size = 32, isDark = false }) => (
   </div>
 );
 
-const ImageSlot = ({ imageUrl, aspectRatio = '1 / 1', generating, isDark = false, restaurantLogoUrl }) => (
+const ImageSlot = ({ imageUrl, aspectRatio = '1 / 1', generating, isDark = false }) => (
   <div style={{
     width: '100%', aspectRatio, 
     background: isDark ? '#000' : '#f0f2f5',
@@ -36,32 +36,7 @@ const ImageSlot = ({ imageUrl, aspectRatio = '1 / 1', generating, isDark = false
         <span style={{ fontSize: 12, color: isDark ? '#666' : '#999', fontFamily: 'Inter, sans-serif' }}>Generating…</span>
       </div>
     ) : imageUrl ? (
-      <>
-        <img src={imageUrl} alt="Generated social media creative" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        
-        {/* Automatic Brand Overlay (Requested Fix) */}
-        {restaurantLogoUrl && (
-          <div style={{
-            position: 'absolute',
-            bottom: 12,
-            right: 12,
-            width: 44,
-            height: 44,
-            borderRadius: '50%',
-            background: 'rgba(255, 255, 255, 0.85)',
-            backdropFilter: 'blur(8px)',
-            padding: 4,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '1px solid rgba(255,255,255,0.4)',
-            overflow: 'hidden'
-          }}>
-            <img src={restaurantLogoUrl} alt="Restaurant logo watermark" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          </div>
-        )}
-      </>
+      <img src={imageUrl} alt="Generated social media creative" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: isDark ? '#000' : '#f0f2f5' }} />
     ) : (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#333' : '#ccc'} strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
@@ -107,8 +82,7 @@ export const PreviewInstagramPost = ({ imageUrl, captionEn, captionHi, restauran
         imageUrl={imageUrl} 
         aspectRatio={aspectRatio} 
         generating={generating} 
-        isDark={isDark} 
-        restaurantLogoUrl={avatarUrl} 
+        isDark={isDark}
       />
 
       <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 16 }}>
@@ -199,8 +173,7 @@ export const PreviewTwitter = ({ imageUrl, captionEn, captionHi, restaurantName,
             imageUrl={imageUrl} 
             aspectRatio={aspectRatio} 
             generating={generating} 
-            isDark={isDark} 
-            restaurantLogoUrl={avatarUrl} 
+            isDark={isDark}
           />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, color: dimColor, maxWidth: 280 }}>
@@ -242,8 +215,7 @@ export const PreviewFacebook = ({ imageUrl, captionEn, captionHi, restaurantName
         imageUrl={imageUrl} 
         aspectRatio={aspectRatio} 
         generating={generating} 
-        isDark={isDark} 
-        restaurantLogoUrl={avatarUrl} 
+        isDark={isDark}
       />
       <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: dimColor, borderBottom: `1px solid ${borderColor}` }}>
         <span>{liked ? '👍❤️ 25' : '👍❤️ 24'}</span>

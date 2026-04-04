@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import axios from "axios";
 import { fileURLToPath } from "url";
 import sharp from "sharp";
 import logger from "../utils/logger.js";
@@ -9,7 +10,6 @@ import logger from "../utils/logger.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOADS_DIR = path.resolve(__dirname, "../../public/uploads");
-const BACKEND_ROOT = path.resolve(__dirname, "../../");
 const GRUBGAIN_LOGO_PATH = path.resolve(
   __dirname,
   "../../../frontend/public/branding/logo.png",
@@ -218,80 +218,113 @@ async function saveGeneratedImage(b64_json) {
   return `/uploads/${fileName}`;
 }
 
-function resolveLocalImagePath(publicPath) {
-  if (!publicPath || typeof publicPath !== "string") {
-    return null;
+function sanitizeExternalImageUrl(rawUrl = "") {
+  if (typeof rawUrl !== "string") return "";
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return "";
+  if (!(trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
+    return "";
   }
-
-  if (publicPath.startsWith("/uploads/")) {
-    return path.resolve(BACKEND_ROOT, "public", publicPath.replace(/^\//, ""));
-  }
-
-  if (path.isAbsolute(publicPath)) {
-    return publicPath;
-  }
-
-  return null;
+  return trimmed.slice(0, 500);
 }
 
-async function createBrandBadge(imagePath, { width, height, x, y }) {
-  if (!imagePath || !fs.existsSync(imagePath)) {
-    return [];
-  }
-
-  const logoBuffer = await sharp(imagePath)
-    .resize({ width, height, fit: "contain", withoutEnlargement: true })
-    .png()
-    .toBuffer();
-
-  const badgeSize = Math.max(width, height) + 44;
-  const badgeSvg = Buffer.from(`
-    <svg width="${badgeSize}" height="${badgeSize}" viewBox="0 0 ${badgeSize} ${badgeSize}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="${badgeSize}" height="${badgeSize}" rx="28" fill="rgba(255,255,255,0.92)"/>
-    </svg>
-  `);
-
-  return [
-    { input: badgeSvg, top: y - 22, left: x - 22 },
-    { input: logoBuffer, top: y, left: x },
-  ];
+async function fetchExternalImageBuffer(url) {
+  const response = await axios.get(url, {
+    responseType: "arraybuffer",
+    timeout: 10000,
+    maxContentLength: 8 * 1024 * 1024,
+    validateStatus: (status) => status >= 200 && status < 300,
+  });
+  return Buffer.from(response.data);
 }
 
-async function applyBrandingToPoster({ baseImageBuffer, restaurantLogoUrl }) {
+async function fetchRestaurantLogoBuffer(restaurantLogoUrl = "") {
+  const raw = String(restaurantLogoUrl || "").trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("/uploads/")) {
+    const localPath = path.resolve(__dirname, `../../public${raw}`);
+    if (!fs.existsSync(localPath)) {
+      throw new Error("Restaurant logo file not found in uploads directory");
+    }
+    return fs.promises.readFile(localPath);
+  }
+
+  const sanitized = sanitizeExternalImageUrl(raw);
+  if (!sanitized) return null;
+  return fetchExternalImageBuffer(sanitized);
+}
+
+async function applyBrandingToPoster({ baseImageBuffer, restaurantLogoUrl = "" }) {
   const image = sharp(baseImageBuffer);
   const metadata = await image.metadata();
   const width = metadata.width || 1024;
   const height = metadata.height || 1024;
   const overlays = [];
+  
+  // Smaller, less intrusive logos with better drop-shadow backing
+  const margin = Math.max(16, Math.round(width * 0.022));
 
-  const restaurantLogoPath = resolveLocalImagePath(restaurantLogoUrl);
-  overlays.push(...await createBrandBadge(restaurantLogoPath, {
-    width: Math.max(120, Math.round(width * 0.16)),
-    height: Math.max(120, Math.round(height * 0.16)),
-    x: Math.round(width * 0.04),
-    y: Math.round(height * 0.04),
-  }));
+  if (restaurantLogoUrl) {
+    try {
+      const logoSourceBuffer = await fetchRestaurantLogoBuffer(restaurantLogoUrl);
+      if (!logoSourceBuffer) {
+        throw new Error("Unsupported restaurant logo URL format");
+      }
+      // Reduced from 17% to 13% width, 10% to 8% height
+      const logoMaxWidth = Math.max(80, Math.round(width * 0.13));
+      const logoMaxHeight = Math.max(44, Math.round(height * 0.08));
+
+      const { data: logoBuffer, info: logoInfo } = await sharp(logoSourceBuffer)
+        .trim()
+        .resize({
+          width: logoMaxWidth,
+          height: logoMaxHeight,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .png()
+        .toBuffer({ resolveWithObject: true });
+
+      const logoW = logoInfo.width || logoMaxWidth;
+      const logoH = logoInfo.height || logoMaxHeight;
+
+      // Overlay restaurant logo directly (no shadow)
+      overlays.push({
+        input: logoBuffer,
+        top: height - logoH - margin,
+        left: margin,
+      });
+    } catch (error) {
+      logger.warn("Could not composite exact restaurant logo overlay", {
+        error: error.message,
+      });
+    }
+  }
 
   if (fs.existsSync(GRUBGAIN_LOGO_PATH)) {
-    const footerLogoWidth = Math.max(48, Math.round(width * 0.06));
-    const footerLogoBuffer = await sharp(GRUBGAIN_LOGO_PATH)
-      .resize({ width: footerLogoWidth, height: footerLogoWidth, fit: "contain", withoutEnlargement: true })
+    // Reduced from 14% to 11% width for less intrusion
+    const watermarkWidth = Math.max(72, Math.round(width * 0.11));
+    const watermarkImage = sharp(GRUBGAIN_LOGO_PATH)
+      .trim()
+      .resize({
+        width: watermarkWidth,
+        fit: "contain",
+        withoutEnlargement: true,
+      });
+    const { data: footerLogoBuffer, info } = await watermarkImage
       .png()
-      .toBuffer();
+      .toBuffer({ resolveWithObject: true });
+    const logoW = info.width || watermarkWidth;
+    const logoH = info.height || Math.round(watermarkWidth * 0.3);
 
-    const footerWidth = Math.max(220, Math.round(width * 0.26));
-    const footerHeight = Math.max(72, Math.round(height * 0.075));
-    const footerLeft = width - footerWidth - Math.round(width * 0.04);
-    const footerTop = height - footerHeight - Math.round(height * 0.04);
-    const footerSvg = Buffer.from(`
-      <svg width="${footerWidth}" height="${footerHeight}" viewBox="0 0 ${footerWidth} ${footerHeight}" xmlns="http://www.w3.org/2000/svg">
-        <rect x="0" y="0" width="${footerWidth}" height="${footerHeight}" rx="18" fill="rgba(26,35,50,0.88)"/>
-        <text x="${Math.round(footerWidth * 0.34)}" y="${Math.round(footerHeight * 0.60)}" font-family="Arial, sans-serif" font-size="${Math.max(16, Math.round(footerHeight * 0.34))}" font-weight="700" fill="#ffffff">Powered by GrubGain</text>
-      </svg>
-    `);
-
-    overlays.push({ input: footerSvg, top: footerTop, left: footerLeft });
-    overlays.push({ input: footerLogoBuffer, top: footerTop + Math.round(footerHeight * 0.18), left: footerLeft + Math.round(footerHeight * 0.18) });
+    // Overlay GrubGain watermark directly (no shadow)
+    overlays.push({
+      input: footerLogoBuffer,
+      top: height - logoH - margin,
+      left: width - logoW - margin,
+      opacity: 0.92,  // Increased opacity for better visibility without shadow
+    });
   }
 
   if (overlays.length === 0) {
@@ -302,7 +335,7 @@ async function applyBrandingToPoster({ baseImageBuffer, restaurantLogoUrl }) {
 }
 
 /**
- * Generate a marketing poster image using gpt-image-1.5 and then composite exact branding assets.
+ * Generate a marketing poster image using gpt-image-1.5 and then composite exact GrubGain watermark.
  *
  * @param {Object} params
  * @param {string} params.prompt  - Full marketing poster prompt
@@ -387,6 +420,9 @@ export const generateFoodPrompt = ({
   restaurantLogoUrl = "",
   restaurantBrandColor = "",
   restaurantBrandStory = "",
+  restaurantProfile = {},
+  contentStudioContext = {},
+  cityFeedContext = {},
 }) => {
   // ── Brand tone → visual design language ──────────────────────────────────
   const toneMap = {
@@ -396,7 +432,7 @@ export const generateFoodPrompt = ({
       "luxury editorial design, high-contrast serif display typeface, rich black and gold palette, fine-dining ambiance",
     fun: "bold vibrant poster style, large rounded chunky typeface, electric saturated colors, playful street-food energy",
     casual:
-      "warm earthy tones, approachable friendly headline, bistro-style layout, hand-crafted aesthetic",
+      "clean friendly layout with natural daylight look, approachable headline style, balanced modern cafe aesthetic",
     professional:
       "structured grid layout, authoritative clean sans-serif, muted corporate palette, premium business feel",
   };
@@ -417,10 +453,37 @@ export const generateFoodPrompt = ({
     ? `FEATURED FOOD: Photorealistic, steaming, delicious presentation of: ${signatureDishes}. Use dramatic lighting to make it irresistible.`
     : `FEATURED FOOD: Showcase appetizing, photorealistic ${cuisineType} cuisine. Food should look fresh, vibrant, and premium.`;
 
-  // ── Location flavour ──────────────────────────────────────────────────────
+  const profile = {
+    targetAudience: restaurantProfile?.targetAudience || "",
+    aboutDescription: restaurantProfile?.aboutDescription || "",
+    standardOffers: restaurantProfile?.standardOffers || "",
+    hashtags: restaurantProfile?.hashtags || "",
+    tagline: restaurantProfile?.tagline || "",
+    priceRange: restaurantProfile?.priceRange || "",
+    instagramHandle: restaurantProfile?.instagramHandle || "",
+    website: restaurantProfile?.website || "",
+  };
+
+  const studioContextNote = [
+    `Studio campaign type: ${contentStudioContext?.campaignType || campaignType}`,
+    `Studio format: ${contentStudioContext?.format || "Post"}`,
+    `Studio aspect ratio: ${contentStudioContext?.aspectRatio || "Square (1:1)"}`,
+    `Studio platform label: ${contentStudioContext?.platformLabel || ""}`,
+    `Studio language label: ${contentStudioContext?.languageLabel || ""}`,
+    `Studio tone label: ${contentStudioContext?.toneLabel || ""}`,
+    `Studio include CTA: ${contentStudioContext?.includeCTA ? "Yes" : "No"}`,
+    `Studio add emojis: ${contentStudioContext?.addEmojis ? "Yes" : "No"}`,
+    `Studio auto hashtags: ${contentStudioContext?.autoHashtags ? "Yes" : "No"}`,
+  ].join(" | ");
+
+  const cityFeedNote = cityFeedContext?.trendTitle
+    ? `CITY FEED INSIGHT TO INCLUDE (without stereotype visuals): Title="${cityFeedContext.trendTitle}", Type="${cityFeedContext.trendType || ""}", Impact="${cityFeedContext.trendImpact || ""}", Angle="${cityFeedContext.trendAngle || ""}", Detail="${cityFeedContext.trendDetail || ""}", City="${cityFeedContext.city || cityName || ""}".`
+    : "";
+
+  // ── Location flavour (strictly restrained, never stereotypical) ──────────
   const locationNote =
     cityName || area
-      ? `LOCATION ESSENCE: Subtly evoke the cultural character of ${[area, cityName].filter(Boolean).join(", ")}, India — through colour, texture, or atmospheric detail.`
+      ? `LOCATION NOTE: If location is used, keep it subtle and modern (${[area, cityName].filter(Boolean).join(", ")}). Never use cliché city elements unless explicitly requested in context.`
       : "";
 
   // ── Extra context ─────────────────────────────────────────────────────────
@@ -434,8 +497,8 @@ export const generateFoodPrompt = ({
     : '';
   
   const logoNote = sanitizedLogoUrl
-    ? `LOGO REQUIREMENT: Use the restaurant logo from this reference URL as a visible, legible brand mark in the composition: ${sanitizedLogoUrl}. The logo must be clearly displayed and not omitted.`
-    : "LOGO REQUIREMENT: A restaurant logo must be visible in the final poster. If no uploaded logo is available, create a clean placeholder logo lockup using the restaurant name without inventing a different brand.";
+    ? `LOGO REQUIREMENT: Use the restaurant logo from this reference URL and integrate it naturally inside the design composition (such as signage, packaging, menu card, wall branding, or product label): ${sanitizedLogoUrl}. The logo must be clearly displayed and not omitted. Do NOT place it as a floating corner sticker or pasted top overlay. Use the logo exactly as provided (shape, colors, text), without redrawing, restyling, or simplifying it.`
+    : "LOGO REQUIREMENT: A restaurant logo must be visible in the final poster and integrated naturally into the scene (signage/packaging/menu/label), not as a floating corner sticker. If no uploaded logo is available, create a clean placeholder logo lockup using the restaurant name without inventing a different brand.";
   
   const brandColorNote = restaurantBrandColor
     ? `BRAND COLOR REQUIREMENT: Respect the restaurant's primary brand color ${restaurantBrandColor} in accents, badges, or background elements.`
@@ -443,6 +506,9 @@ export const generateFoodPrompt = ({
   const brandStoryNote = restaurantBrandStory
     ? `BRAND STORY REQUIREMENT: Reflect this brand story in the visual mood and layout: ${restaurantBrandStory}`
     : "BRAND STORY REQUIREMENT: Keep the visual identity consistent with a modern restaurant brand.";
+  const grubgainNote = "GRUBGAIN BRANDING REQUIREMENT: Reserve clean negative space in BOTH bottom corners (bottom-left AND bottom-right) for small signature logo watermarks. Do NOT place important text, offers, CTAs, emojis, or decorative elements in the bottom 12% of the poster. Keep bottom corners clear and uncluttered.";
+  const grubgainTextBanNote = "CRITICAL NEGATIVE INSTRUCTION: Do NOT generate any text that says 'GrubGain', 'Powered by GrubGain', 'grubgain.com', or any similar attribution/watermark text anywhere in the poster image. Brand watermarks will be added separately after image generation. The AI must NOT add platform or service attribution text.";
+  const fullRestaurantDataNote = `RESTAURANT PROFILE DATA (MUST DRIVE CREATIVE): Name="${restaurantName}", Cuisine="${cuisineType}", City="${cityName}", Area="${area}", Signature Dishes="${signatureDishes}", Brand Tone="${brandTone}", Target Audience="${profile.targetAudience}", Tagline="${profile.tagline}", About="${profile.aboutDescription}", Standard Offers="${profile.standardOffers}", Price Range="${profile.priceRange}", Brand Hashtags="${profile.hashtags}", Instagram="${profile.instagramHandle}", Website="${profile.website}".`;
 
   // ── Assemble the full prompt ──────────────────────────────────────────────
   return `
@@ -463,13 +529,20 @@ Cuisine: ${cuisineType}
 ━━━ MANDATORY BRANDING ━━━
 • The restaurant identity, logo, and name must be treated as mandatory elements, not optional decoration.
 • The poster must include the restaurant logo, restaurant name, and location cues in a coherent hierarchy.
-• Include a small GrubGain brand footer or badge that clearly reads "Powered by GrubGain".
-• The GrubGain brand mark must be visible, clean, and secondary to the restaurant branding.
-• Do not omit either the restaurant branding or the GrubGain branding.
+• Restaurant branding must be dominant and premium.
+• Do not add extra mock watermarks, random brand logos, or UI-style stickers.
+• PRIORITY RULE: Restaurant profile and Studio context are the source of truth. Ignore generic stock-city aesthetics.
+• STRICT NEGATIVE RULE: Do NOT add rickshaws, generic Mumbai street scenes, random traffic, skyline clichés, or tourist postcard elements unless explicitly asked in the context.
+• Use clean, premium, restaurant-first compositions. Background should support food + brand, not overpower it.
 
 ${logoNote}
 ${brandColorNote}
 ${brandStoryNote}
+${fullRestaurantDataNote}
+STUDIO CONTEXT (MUST APPLY): ${studioContextNote}
+${cityFeedNote}
+${grubgainNote}
+${grubgainTextBanNote}
 
 ━━━ VISUAL DESIGN STYLE ━━━
 ${visualStyle}
@@ -488,14 +561,21 @@ ${contextNote}
 • Ready to post directly on Instagram / Facebook — no further editing needed.
 • Professional marketing agency standard (think Zomato or Swiggy campaign quality).
 • Perfectly balanced composition: text takes 30–40% of space, visuals take 60–70%.
-• No watermarks. No stock-photo borders. No lorem ipsum placeholder text.
+• CRITICAL FRAMING: Keep all critical elements (restaurant name, offer text, CTA, and hero food) fully inside a SAFE AREA with at least 8% padding from every edge.
+• BOTTOM CORNER EXCLUSION ZONE: Reserve the bottom-left and bottom-right corners (bottom 12% height) exclusively for small logo watermarks. Do NOT place any text, CTAs, emojis, promotional copy, or decorative graphics in these corner zones.
+• No edge clipping: do not place any text, plates, cups, faces, or badges touching or crossing the frame boundary.
+• Maintain comfortable top and bottom breathing room so nothing appears cut off on mobile previews.
+• COLOR DIRECTION: Do NOT apply a heavy brown/sepia cast unless explicitly required by the restaurant brand.
+• Match the restaurant palette closely; if brand colors are provided, they must dominate highlights, accents, and key UI elements in the poster.
+• Keep backgrounds neutral/premium by default; avoid muddy brown casts and avoid stereotypical local-scene clutter.
+• No third-party watermarks. No stock-photo borders. No lorem ipsum placeholder text.
 `.trim();
 };
 
 /**
  * Generate a complete content package (AI caption + gpt-image-1.5 branded poster).
- * The compositor pipeline is intentionally removed:
- * gpt-image-1.5 renders restaurant name, layout, and branding natively in one call.
+ * Restaurant creative is generated natively by gpt-image-1.5.
+ * A subtle exact GrubGain watermark is composited after generation.
  */
 export const generateFullContent = async (params) => {
   try {
@@ -533,6 +613,9 @@ export const generateFullContent = async (params) => {
       restaurantLogoUrl: params.restaurantLogoUrl || "",
       restaurantBrandColor: params.restaurantBrandColor || "",
       restaurantBrandStory: params.restaurantBrandStory || "",
+      restaurantProfile: params.restaurantProfile || {},
+      contentStudioContext: params.contentStudioContext || {},
+      cityFeedContext: params.cityFeedContext || {},
     });
 
     // ── Step 3: Generate the image — gpt-image-1.5 renders text natively ─────

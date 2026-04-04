@@ -2,6 +2,10 @@ import { body, validationResult } from "express-validator";
 import * as openaiService from "../services/openaiService.js";
 import logger from "../utils/logger.js";
 import prisma from "../../prisma/client.js";
+import {
+  normalizeLanguageInput,
+  normalizePlatformInput,
+} from "../utils/contentNormalization.js";
 
 // ---------------------------------------------------------
 //  POST /api/v1/content/generate   (authenticated)
@@ -34,6 +38,8 @@ export const generateContent = async (req, res, next) => {
       prompt: customPrompt,
       campaignType,
       dishDescription,
+      contentStudioContext,
+      cityFeedContext,
     } = req.body;
 
     const userRecord = await prisma.user.findUnique({
@@ -63,6 +69,8 @@ export const generateContent = async (req, res, next) => {
     }
 
     const restaurant = userRecord.restaurant;
+    const normalizedPlatform = normalizePlatformInput(platform, "INSTAGRAM");
+    const normalizedLanguage = normalizeLanguageInput(language, "BILINGUAL");
     const restaurantLogoUrl = restaurant.logo_url || restaurant.brandAssets?.find((asset) => asset.asset_type === 'LOGO' && asset.file_url)?.file_url || null;
     let caption, imageUrl, metadata;
 
@@ -87,7 +95,7 @@ export const generateContent = async (req, res, next) => {
         restaurantLogoUrl,
         restaurantBrandColor: restaurant.brand_color,
         restaurantBrandStory: restaurant.brand_story,
-        language: language || "BILINGUAL",
+        language: normalizedLanguage,
         occasion,
         dishName,
         dishDescription,
@@ -100,6 +108,29 @@ export const generateContent = async (req, res, next) => {
         includeCTA,
         addEmojis,
         autoHashtags,
+        contentStudioContext: contentStudioContext || {},
+        cityFeedContext: cityFeedContext || {},
+        restaurantProfile: {
+          name: restaurant.name || "",
+          city: restaurant.city || "",
+          area: restaurant.area || "",
+          cuisineType: restaurant.cuisine_type || "",
+          targetAudience: restaurant.target_audience || "",
+          brandTone: restaurant.brand_tone || "",
+          languagePreference: restaurant.language_preference || "",
+          aboutDescription: restaurant.about_description || "",
+          signatureDishes: restaurant.signature_dishes || "",
+          standardOffers: restaurant.standard_offers || "",
+          hashtags: restaurant.hashtags || "",
+          brandColor: restaurant.brand_color || "",
+          brandStory: restaurant.brand_story || "",
+          mascotUrl: restaurant.mascot_url || "",
+          tagline: restaurant.tagline || "",
+          priceRange: restaurant.price_range || "",
+          instagramHandle: restaurant.instagram_handle || "",
+          twitterHandle: restaurant.twitter_handle || "",
+          website: restaurant.website || "",
+        },
       });
       caption = result.caption;
       imageUrl = result.imageUrl;
@@ -110,7 +141,7 @@ export const generateContent = async (req, res, next) => {
         restaurantType: restaurant.cuisine_type || restaurantType,
         city: restaurant.city || city,
         tone: restaurant.brand_tone || tone || "casual",
-        language: language || "BILINGUAL",
+        language: normalizedLanguage,
         occasion,
         dishName,
         hashtags,
@@ -125,13 +156,13 @@ export const generateContent = async (req, res, next) => {
     let captionEnglish = caption;
     let captionHindi = null;
 
-    if (language === "BILINGUAL" && caption) {
+    if (normalizedLanguage === "BILINGUAL" && caption) {
       const parts = caption.split(/\n{2,}/); // Split on blank lines
       if (parts.length >= 2) {
         captionEnglish = parts[0].trim();
         captionHindi = parts[1].trim();
       }
-    } else if (language === "HINDI") {
+    } else if (normalizedLanguage === "HINDI") {
       captionEnglish = null;
       captionHindi = caption;
     }
@@ -139,8 +170,8 @@ export const generateContent = async (req, res, next) => {
     const savedContent = await prisma.generatedContent.create({
       data: {
         restaurant_id: restaurant.id,
-        platform: (platform || "INSTAGRAM").toUpperCase(),
-        language: language || "BILINGUAL",
+        platform: normalizedPlatform,
+        language: normalizedLanguage,
         tone: tone || "casual",
         prompt:
           customPrompt ||
@@ -450,7 +481,21 @@ export const testFullContent = async (req, res, next) => {
 
 export const generateContentValidation = [
   body("restaurantName").optional().isString(),
-  body("tone").optional().isIn(["casual", "professional", "fun", "elegant"]),
+  body("tone")
+    .optional()
+    .custom((value) => {
+      const allowedTones = new Set([
+        "casual",
+        "professional",
+        "fun",
+        "elegant",
+        "festive",
+        "humorous",
+        "emotional",
+      ]);
+      return allowedTones.has(String(value).trim().toLowerCase());
+    })
+    .withMessage("Invalid tone value"),
   body("imageSize").optional().isIn(["1024x1024", "1024x1792", "1792x1024"]),
   body("imageQuality").optional().isIn(["low", "medium", "high", "auto"]),
 ];

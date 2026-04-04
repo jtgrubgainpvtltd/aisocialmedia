@@ -154,7 +154,17 @@ export default function CityFeed() {
           {filtered.map(item => {
             const ic = impactColors[item.impact] || impactColors.low
             const isExpanded = expanded === item.id
-            const studioUrl = `/dashboard/studio?prompt=${encodeURIComponent(`Create an engaging social media post. Highlight that ${item.title}. The goal is: ${item.angle}. Ensure it perfectly matches our ${cuisine} restaurant branding.`)}`
+            const studioPrompt = `Create an engaging social media post. Highlight that ${item.title}. The goal is: ${item.angle}. Ensure it perfectly matches our ${cuisine} restaurant branding.`
+            const cityFeedPayload = {
+              prompt: studioPrompt,
+              trendTitle: item.title,
+              trendType: item.type,
+              trendSource: item.source,
+              trendImpact: item.impact,
+              trendAngle: item.angle,
+              trendDetail: item.detail,
+              city: selectedCity,
+            }
 
             return (
               <div key={item.id} style={{
@@ -204,7 +214,7 @@ export default function CityFeed() {
                         fontFamily: 'Space Mono, monospace', fontSize: '0.56rem',
                         letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(12,12,12,0.6)', transition: 'all 0.1s'
                       }}>{isExpanded ? 'Less' : 'Details'}</button>
-                      <Link to={studioUrl} style={{
+                      <Link to="/dashboard/studio" state={{ cityFeedPayload }} style={{
                         padding: '8px 16px', borderRadius: 8, cursor: 'pointer', textDecoration: 'none',
                         border: 'none', background: 'linear-gradient(135deg, var(--teal) 0%, #00a486 100%)',
                         fontFamily: 'Space Mono, monospace', fontSize: '0.56rem', fontWeight: 600,

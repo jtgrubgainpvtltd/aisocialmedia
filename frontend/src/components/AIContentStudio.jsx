@@ -55,6 +55,7 @@ export default function AIContentStudio() {
   const { toasts, toast } = useToast();
   const queryClient = useQueryClient();
   const historyToastShownRef = useRef(false);
+  const prefillAppliedRef = useRef(false);
 
   const [platform, setPlatform] = useState(platforms[0]);
   const [language, setLanguage] = useState(languages[0]);
@@ -100,14 +101,28 @@ export default function AIContentStudio() {
 
   // Pre-fill from URL params (e.g. from City Feed or History)
   useEffect(() => {
+    if (prefillAppliedRef.current) return;
+
     const urlPrompt = searchParams.get("prompt");
     const urlCaption = searchParams.get("caption");
     const urlImageUrl = searchParams.get("imageUrl");
     const urlPlatform = searchParams.get("platform");
     const historyPayload = location.state?.historyEditPayload || null;
+    const cityFeedPayload = location.state?.cityFeedPayload || null;
 
     if (urlPrompt) {
       setPrompt(decodeURIComponent(urlPrompt));
+    }
+
+    if (cityFeedPayload?.prompt) {
+      setPrompt(cityFeedPayload.prompt);
+      if (cityFeedPayload.trendType) {
+        if (String(cityFeedPayload.trendType).toLowerCase().includes("event")) {
+          setCampaignType("Festival Greeting");
+        } else if (String(cityFeedPayload.trendType).toLowerCase().includes("sports")) {
+          setCampaignType("General Branding");
+        }
+      }
     }
 
     // If coming from History page, pre-fill everything
@@ -155,6 +170,7 @@ export default function AIContentStudio() {
         historyToastShownRef.current = true;
       }
     }
+    prefillAppliedRef.current = true;
   }, [searchParams, location.state, toast]);
 
   // Scheduler state
@@ -224,6 +240,19 @@ export default function AIContentStudio() {
         addEmojis: addEmojis,
         autoHashtags: autoHashtags,
         generateImage: true,
+        contentStudioContext: {
+          campaignType,
+          format,
+          aspectRatio,
+          platformLabel: platform,
+          languageLabel: language,
+          toneLabel: tone,
+          customPrompt: prompt || "",
+          includeCTA,
+          addEmojis,
+          autoHashtags,
+        },
+        cityFeedContext: location.state?.cityFeedPayload || null,
       });
 
       if (data.success) {
